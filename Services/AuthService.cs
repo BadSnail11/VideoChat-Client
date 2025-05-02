@@ -75,6 +75,15 @@ namespace VideoChat_Client.Services
 
             return updatedUser;
         }
+        public async Task Logout(Guid userId)
+        {
+            await _supabase
+                .From<Models.User>()
+                .Where(x => x.Id == userId)
+                .Set(x => x.IsActive, false)
+                .Set(x => x.LastOnline, DateTime.UtcNow)
+                .Update();
+        }
         private string HashPassword(string password)
         {
             using var sha256 = SHA256.Create();
