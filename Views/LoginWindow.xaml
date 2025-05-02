@@ -1,0 +1,48 @@
+﻿<Window x:Class="VideoChat_Client.Views.LoginWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Вход в видеочат" 
+        Height="400" Width="400"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="NoResize">
+
+    <Grid Margin="20">
+        <StackPanel VerticalAlignment="Center">
+            <!-- Логотип или заголовок -->
+            <TextBlock Text="Видеочат" 
+                       FontSize="24"
+                       HorizontalAlignment="Center"
+                       Margin="0,0,0,20"/>
+
+            <!-- Поле ввода имени пользователя -->
+            <TextBlock Text="Имя пользователя:"/>
+            <TextBox x:Name="UsernameBox" 
+                     Margin="0,5,0,10"
+                     Padding="5"/>
+
+            <!-- Поле ввода пароля -->
+            <TextBlock Text="Пароль:"/>
+            <PasswordBox x:Name="PasswordBox" 
+                        Margin="0,5,0,20"
+                        Padding="5"/>
+
+            <!-- Кнопки входа/регистрации -->
+            <Button Content="Войти" 
+                    Click="LoginButton_Click"
+                    Padding="10,5"
+                    FontWeight="Bold"
+                    Margin="0,0,0,10"/>
+
+            <Button Content="Зарегистрироваться" 
+                    Click="RegisterButton_Click"
+                    Padding="10,5"/>
+
+            <!-- Блок для сообщений об ошибках -->
+            <TextBlock x:Name="MessageText"
+                       Margin="0,15,0,0"
+                       TextWrapping="Wrap"
+                       Foreground="Red"
+                       Visibility="Collapsed"/>
+        </StackPanel>
+    </Grid>
+</Window>
