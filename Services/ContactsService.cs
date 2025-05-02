@@ -5,6 +5,8 @@ using System.Text;
 using System.Threading.Tasks;
 using VideoChat_Client.Models;
 using Supabase;
+using System.Diagnostics;
+using VideoChat_Client.Models;
 
 namespace VideoChat_Client.Services
 {
@@ -45,42 +47,69 @@ namespace VideoChat_Client.Services
             }
         }
 
-        public async Task<bool> AddContact(Guid userId, string username)
+        public async Task<List<User>> GetUserContactsWithDetails(Guid userId)
         {
             try
             {
-                var userResponse = await _supabase
+                // 1. Получаем ID контактов пользователя
+                var contactsResponse = await _supabase
+                    .From<Contact>()
+                    .Where(c => c.UserId == userId)
+                    .Get();
+
+                if (contactsResponse.Models?.Any() != true)
+                    return new List<User>();
+
+                var contactIds = contactsResponse.Models
+                    .Select(c => c.ContactId)
+                    .ToList();
+
+                // 2. Получаем информацию о контактах
+                var usersResponse = await _supabase
                     .From<User>()
-                    .Where(x => x.Username == username)
-                    .Single();
+                    .Filter("id", Postgrest.Constants.Operator.In, contactIds)
+                    .Get();
 
-                if (userResponse == null)
-                    return false;
+                return usersResponse.Models;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error getting contacts: {ex.Message}");
+                return new List<User>();
+            }
+        }
 
+        public async Task<bool> AddContact(Guid userId, Guid contactId)
+        {
+            try
+            {
+                // Проверяем существование контакта
                 var existingContact = await _supabase
                     .From<Contact>()
-                    .Where(x => x.UserId == userId && x.ContactId == userResponse.Id)
-                    .Single();
+                    .Where(x => x.UserId == userId && x.ContactId == contactId)
+                    .Get();
 
-                if (existingContact != null)
-                    return false;
+                if (existingContact.Models?.Count > 0)
+                {
+                    return false; // Контакт уже существует
+                }
 
                 var newContact = new Contact
                 {
                     UserId = userId,
-                    ContactId = userResponse.Id,
+                    ContactId = contactId,
                     CreatedAt = DateTime.UtcNow
                 };
 
-                await _supabase
+                var response = await _supabase
                     .From<Contact>()
                     .Insert(newContact);
 
-                return true;
+                return response.ResponseMessage.IsSuccessStatusCode;
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error adding contact: {ex.Message}");
+                Debug.WriteLine($"Error adding contact: {ex.Message}");
                 return false;
             }
         }

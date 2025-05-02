@@ -12,6 +12,8 @@ using VideoChat_Client.Services;
 using VideoChat_Client.Models;
 using Supabase;
 using DotNetEnv;
+using System.Diagnostics;
+using System.Collections.ObjectModel;
 
 namespace VideoChat_Client.Views
 {
@@ -22,7 +24,7 @@ namespace VideoChat_Client.Views
         private User _selectedUser;
         private Client _supabaseClient;
         //private User _selectedContact;
-        //private List<User> _allContacts = new List<User>();
+        private ObservableCollection<User> _contacts = new ObservableCollection<User>();
 
         public MainWindow()
         {
@@ -38,7 +40,9 @@ namespace VideoChat_Client.Views
             _contactsService = new ContactsService(supabase);
             _callsService = new CallsService(supabase);
 
-            LoadUserContacts();
+            ContactsListView.ItemsSource = _contacts;
+
+            LoadContacts();
             SetupEventHandlers();
         }
 
@@ -54,22 +58,28 @@ namespace VideoChat_Client.Views
             };
         }
 
-        private async void LoadUserContacts()
+        private async void LoadContacts()
         {
+            if (App.CurrentUser == null) return;
+
             try
             {
-                if (App.CurrentUser == null)
-                {
-                    ShowError("Пользователь не авторизован");
-                    return;
-                }
+                var contacts = await _contactsService.GetUserContactsWithDetails(App.CurrentUser.Id);
 
-                var contacts = await _contactsService.GetUserContacts(App.CurrentUser.Id);
-                ContactsListView.ItemsSource = contacts;
+                // Обновляем коллекцию в UI потоке
+                Dispatcher.Invoke(() =>
+                {
+                    _contacts.Clear();
+                    foreach (var contact in contacts)
+                    {
+                        _contacts.Add(contact);
+                    }
+                    Console.WriteLine($"Обновлено контактов: {_contacts.Count}");
+                });
             }
             catch (Exception ex)
             {
-                ShowError($"Ошибка загрузки контактов: {ex.Message}");
+                Console.WriteLine($"Ошибка загрузки контактов: {ex.Message}");
             }
         }
 
@@ -107,21 +117,29 @@ namespace VideoChat_Client.Views
             }
         }
 
-        private void ContactsListView_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        private async void ContactsListView_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            _selectedUser = ContactsListView.SelectedItem as User;
-            if (_selectedUser == null) return;
-
-            SearchTextBox.Text = _selectedUser.Username;
-            SearchButton_Click(sender, e);
+            if (ContactsListView.SelectedItem is User selectedContact)
+            {
+                _selectedUser = selectedContact;
+                DisplayUserProfile(selectedContact);
+            }
         }
 
-        private void DisplayUserProfile(User user)
+        private async void DisplayUserProfile(User user)
         {
             _selectedUser = user;
-
-            // Обновление UI
             FoundUsernameText.Text = user.Username;
+
+            // Проверяем, есть ли пользователь в контактах
+            AddContactButton.Visibility = ShouldHideAddButton(user.Id)
+                ? Visibility.Collapsed
+                : Visibility.Visible;
+
+            // Загружаем историю звонков
+            await LoadCallHistory(user.Id);
+
+            // Показываем панель пользователя
             UserPanel.Visibility = Visibility.Visible;
             DefaultMessageText.Visibility = Visibility.Collapsed;
             ErrorText.Visibility = Visibility.Collapsed;
@@ -238,6 +256,50 @@ namespace VideoChat_Client.Views
         {
             ErrorText.Text = message;
             ErrorText.Visibility = Visibility.Visible;
+        }
+
+        private async void AddContactButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_selectedUser == null || App.CurrentUser == null) return;
+
+            try
+            {
+                AddContactButton.IsEnabled = false;
+                AddContactButton.Content = "Добавление...";
+
+                bool success = await _contactsService.AddContact(
+                    App.CurrentUser.Id,
+                    _selectedUser.Id);
+
+                if (success)
+                {
+                    //ShowError("Контакт успешно добавлен", isError: false);
+
+                    // Обновляем список контактов
+                    LoadContacts();
+
+                    // Скрываем кнопку, если контакт уже добавлен
+                    AddContactButton.Visibility = ShouldHideAddButton(_selectedUser.Id) ? Visibility.Visible : Visibility.Hidden;
+                }
+                else
+                {
+                    ShowError("Контакт уже существует");
+                }
+            }
+            catch (Exception ex)
+            {
+                ShowError($"Ошибка: {ex.Message}");
+            }
+            finally
+            {
+                AddContactButton.IsEnabled = true;
+                AddContactButton.Content = "Добавить в контакты";
+            }
+        }
+
+        private bool ShouldHideAddButton(Guid contactId)
+        {
+            return _contacts.Any(c => c.Id == contactId);
         }
 
         protected override async void OnClosed(EventArgs e)
