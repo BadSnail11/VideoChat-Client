@@ -75,42 +75,31 @@ namespace VideoChat_Client.Views
 
         private async void SearchButton_Click(object sender, RoutedEventArgs e)
         {
-            string username = SearchTextBox.Text.Trim();
+            string searchTerm = SearchTextBox.Text.Trim();
 
-            if (string.IsNullOrEmpty(username))
+            if (string.IsNullOrEmpty(searchTerm))
             {
-                ShowError("Введите имя пользователя");
+                ShowError("Введите имя пользователя для поиска");
                 return;
             }
 
             try
             {
-                var users = await _contactsService.SearchUsers(username);
-                var foundUser = users.FirstOrDefault();
+                // Поиск пользователей
+                var foundUsers = await _contactsService.SearchUsers(searchTerm);
+                var user = foundUsers.FirstOrDefault();
 
-                if (foundUser == null)
+                if (user == null)
                 {
-                    ShowError("Пользователь не найден");
-                    UserPanel.Visibility = Visibility.Collapsed;
-                    DefaultMessageText.Visibility = Visibility.Visible;
+                    ShowUserNotFound();
                     return;
                 }
 
-                // Показываем информацию о пользователе
-                _selectedUser = foundUser;
-                FoundUsernameText.Text = foundUser.Username;
+                // Отображение найденного пользователя
+                DisplayUserProfile(user);
 
-                // Загружаем историю звонков
-                var callHistory = await _callsService.GetCallHistory(
-                    App.CurrentUser.Id,
-                    foundUser.Id);
-
-                CallHistoryListView.ItemsSource = callHistory;
-
-                // Показываем панель пользователя
-                UserPanel.Visibility = Visibility.Visible;
-                DefaultMessageText.Visibility = Visibility.Collapsed;
-                ErrorText.Visibility = Visibility.Collapsed;
+                // Загрузка истории звонков
+                await LoadCallHistory(user.Id);
             }
             catch (Exception ex)
             {
@@ -148,7 +137,9 @@ namespace VideoChat_Client.Views
                     App.CurrentUser.Id,
                     contactId);
 
-                CallHistoryListView.ItemsSource = history;
+                CallHistoryListView.ItemsSource = history
+                    .OrderByDescending(c => c.StartedAt)
+                    .ToList();
             }
             catch (Exception ex)
             {
@@ -166,38 +157,75 @@ namespace VideoChat_Client.Views
 
         private async void CallButton_Click(object sender, RoutedEventArgs e)
         {
-            if (_selectedUser == null || App.CurrentUser == null) return;
+            if (_selectedUser == null || App.CurrentUser == null)
+            {
+                ShowError("Пользователь не выбран");
+                return;
+            }
 
-            CallButton.IsEnabled = false;
-            ErrorText.Visibility = Visibility.Collapsed;
+            DateTime callStartTime = DateTime.UtcNow;
+            Guid callId = Guid.Empty;
 
             try
             {
-                // Создаем запись о звонке
+                CallButton.IsEnabled = false;
+                ErrorText.Visibility = Visibility.Collapsed;
+
+                // Начало звонка
                 var call = await _callsService.StartCall(
                     App.CurrentUser.Id,
                     _selectedUser.Id,
-                    "127.0.0.1", // Здесь будет реальный IP
-                    12345);      // Здесь будет реальный порт
+                    GetLocalIpAddress(),
+                    12345);
 
-                // Обновляем историю звонков
-                var callHistory = await _callsService.GetCallHistory(
-                    App.CurrentUser.Id,
-                    _selectedUser.Id);
+                callId = call.Id; // Сохраняем ID звонка
 
-                CallHistoryListView.ItemsSource = callHistory;
+                // Здесь будет реальная логика звонка через UDP
+                // Имитируем звонок длительностью 2 секунды
+                await Task.Delay(2000);
 
-                MessageBox.Show("Звонок начат", "Успех",
-                    MessageBoxButton.OK, MessageBoxImage.Information);
+                // Рассчитываем длительность
+                TimeSpan callDuration = DateTime.UtcNow - callStartTime;
+
+                // Обновляем статус и длительность звонка
+                await _callsService.UpdateCallStatus(
+                    callId,
+                    "completed",
+                    GetLocalIpAddress(),
+                    12346);
+
+                await _callsService.UpdateCallDuration(callId, callDuration);
+
+                // Обновление истории
+                await LoadCallHistory(_selectedUser.Id);
+
+                MessageBox.Show($"Звонок завершен. Длительность: {FormatDuration(callDuration)}",
+                    "Успех", MessageBoxButton.OK, MessageBoxImage.Information);
             }
             catch (Exception ex)
             {
+                if (callId != Guid.Empty)
+                {
+                    // Если звонок был создан, но произошла ошибка
+                    TimeSpan callDuration = DateTime.UtcNow - callStartTime;
+                    await _callsService.UpdateCallStatus(callId, "failed");
+                    await _callsService.UpdateCallDuration(callId, callDuration);
+                }
+
                 ShowError($"Ошибка звонка: {ex.Message}");
             }
             finally
             {
                 CallButton.IsEnabled = true;
             }
+        }
+
+        private string FormatDuration(TimeSpan duration)
+        {
+            if (duration.TotalHours >= 1)
+                return duration.ToString(@"hh\:mm\:ss");
+
+            return duration.ToString(@"mm\:ss");
         }
 
         private string GetLocalIpAddress()

@@ -86,6 +86,27 @@ namespace VideoChat_Client.Services
             }
         }
 
+        public async Task<bool> UpdateCallDuration(Guid callId, TimeSpan duration)
+        {
+            try
+            {
+                string formattedDuration = FormatDuration(duration);
+
+                await _supabase
+                    .From<Call>()
+                    .Where(x => x.Id == callId)
+                    .Set(x => x.Duration, formattedDuration)
+                    .Update();
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error updating call duration: {ex.Message}");
+                return false;
+            }
+        }
+
         public async Task<List<Call>> GetCallHistory(Guid userId, Guid contactId)
         {
             try
@@ -97,21 +118,34 @@ namespace VideoChat_Client.Services
                     .Order(x => x.StartedAt, Postgrest.Constants.Ordering.Descending)
                     .Get();
 
-                return response.Models.Select(c => new Call
+                // Вычисляем Duration локально
+                return response.Models.Select(c =>
                 {
-                    Id = c.Id,
-                    CallerId = c.CallerId,
-                    ReceiverId = c.ReceiverId,
-                    StartedAt = c.StartedAt,
-                    EndedAt = c.EndedAt,
-                    Status = c.Status,
-                    CallerIp = c.CallerIp,
-                    ReceiverIp = c.ReceiverIp,
-                    CallerPort = c.CallerPort,
-                    ReceiverPort = c.ReceiverPort,
-                    Duration = c.EndedAt.HasValue
-                        ? FormatDuration(c.EndedAt.Value - c.StartedAt)
-                        : "N/A"
+                    var call = new Call
+                    {
+                        Id = c.Id,
+                        CallerId = c.CallerId,
+                        ReceiverId = c.ReceiverId,
+                        StartedAt = c.StartedAt,
+                        EndedAt = c.EndedAt,
+                        Status = c.Status,
+                        CallerIp = c.CallerIp,
+                        ReceiverIp = c.ReceiverIp,
+                        CallerPort = c.CallerPort,
+                        ReceiverPort = c.ReceiverPort
+                    };
+
+                    // Вычисляем длительность только если звонок завершен
+                    if (call.EndedAt.HasValue && call.StartedAt != null)
+                    {
+                        call.Duration = FormatDuration(call.EndedAt.Value - call.StartedAt);
+                    }
+                    else
+                    {
+                        call.Duration = "N/A";
+                    }
+
+                    return call;
                 }).ToList();
             }
             catch (Exception ex)

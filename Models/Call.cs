@@ -2,12 +2,12 @@
 using Postgrest.Models;
 using System;
 using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations.Schema;
+//using System.ComponentModel.DataAnnotations.Schema;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using ColumnAttribute = Postgrest.Attributes.ColumnAttribute;
-using TableAttribute = Postgrest.Attributes.TableAttribute;
+//using ColumnAttribute = Postgrest.Attributes.ColumnAttribute;
+//using TableAttribute = Postgrest.Attributes.TableAttribute;
 
 namespace VideoChat_Client.Models
 {
@@ -44,7 +44,7 @@ namespace VideoChat_Client.Models
         [Column("receiver_port")]
         public int? ReceiverPort { get; set; }
 
-        [NotMapped]
-        public string Duration { get; set; }
+        [ColumnAttribute("duration")]
+        public string? Duration { get; set; }
     }
 }
