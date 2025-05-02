@@ -4,6 +4,6 @@
              xmlns:local="clr-namespace:VideoChat_Client"
              StartupUri="Views/LoginWindow.xaml">
     <Application.Resources>
-         
+        
     </Application.Resources>
 </Application>

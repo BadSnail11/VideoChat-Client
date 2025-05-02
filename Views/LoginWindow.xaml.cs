@@ -89,13 +89,7 @@ namespace VideoChat_Client.Views
 
                 //ShowError("Регистрация успешна! Теперь войдите.", isError: false);
                 // Сохраняем текущего пользователя
-                var user = await _authService.Login(username, password);
-                App.CurrentUser = user;
-
-                // Открываем главное окно
-                var mainWindow = new MainWindow();
-                mainWindow.Show();
-                this.Close();
+                LoginButton_Click(sender, e);
             }
             else
             {
