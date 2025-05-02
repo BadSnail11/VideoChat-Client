@@ -28,7 +28,8 @@ public partial class App : Application
                     SupabaseUrl,
                     SupabaseKey);
                 var authService = new AuthService(supabase);
-                authService.Logout(CurrentUser.Id).Wait();
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2)); // Таймаут 5 секунд
+                authService.Logout(CurrentUser.Id).WaitAsync(cts.Token);
             }
             catch (Exception ex)
             {

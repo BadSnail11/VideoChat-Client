@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using VideoChat_Client.Models;
 using System.Security.Cryptography;
 using Supabase;
+using System.Diagnostics;
 
 namespace VideoChat_Client.Services
 {
@@ -75,14 +76,29 @@ namespace VideoChat_Client.Services
 
             return updatedUser;
         }
-        public async Task Logout(Guid userId)
+        public async Task<bool> Logout(Guid userId)
         {
-            await _supabase
-                .From<Models.User>()
-                .Where(x => x.Id == userId)
-                .Set(x => x.IsActive, false)
-                .Set(x => x.LastOnline, DateTime.UtcNow)
-                .Update();
+            try
+            {
+                var response = await _supabase
+                    .From<Models.User>()
+                    .Where(x => x.Id == userId)
+                    .Set(x => x.IsActive, false)
+                    .Set(x => x.LastOnline, DateTime.UtcNow)
+                    .Update();
+
+                return response.ResponseMessage.IsSuccessStatusCode;
+            }
+            catch (OperationCanceledException)
+            {
+                Debug.WriteLine("Logout timeout exceeded");
+                return false;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Logout error: {ex.Message}");
+                return false;
+            }
         }
         private string HashPassword(string password)
         {
