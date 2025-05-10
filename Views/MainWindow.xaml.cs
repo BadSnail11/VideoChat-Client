@@ -14,6 +14,7 @@ using Supabase;
 using DotNetEnv;
 using System.Diagnostics;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 
 namespace VideoChat_Client.Views
 {
@@ -25,6 +26,9 @@ namespace VideoChat_Client.Views
         private Client _supabaseClient;
         //private User _selectedContact;
         private ObservableCollection<User> _contacts = new ObservableCollection<User>();
+
+        private CameraService _cameraService;
+        private MicrophoneService _microphoneService;
 
         public MainWindow()
         {
@@ -42,8 +46,63 @@ namespace VideoChat_Client.Views
 
             ContactsListView.ItemsSource = _contacts;
 
+            _cameraService = new CameraService();
+            _microphoneService = new MicrophoneService();
+            _cameraService.FrameReady += OnCameraFrameReady;
+            _microphoneService.AudioDataAvailable += OnAudioDataAvailable;
+
+            //Loaded += MainWindow_Loaded;
+            //Closing += MainWindow_Closing;
+
             LoadContacts();
             SetupEventHandlers();
+        }
+
+        //private void MainWindow_Loaded(object sender, RoutedEventArgs e)
+        //{
+        //    try
+        //    {
+        //        _cameraService.StartCamera();
+        //        _microphoneService.StartRecording();
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        MessageBox.Show($"Ошибка инициализации устройств: {ex.Message}");
+        //    }
+        //}
+
+        private void OnCameraFrameReady(BitmapImage image)
+        {
+            Dispatcher.Invoke(() =>
+            {
+                LocalVideoDisplay.Source = image;
+            });
+        }
+
+        //private async void MainWindow_Closing(object sender, CancelEventArgs e)
+        //{
+        //    e.Cancel = true;
+
+        //    var cts = new CancellationTokenSource(2000); // Таймаут 2 секунды
+
+        //    try
+        //    {
+        //        await StopAllDevicesAsync(cts.Token);
+        //        Application.Current.Shutdown();
+        //    }
+        //    catch (OperationCanceledException)
+        //    {
+        //        // Принудительное закрытие по таймауту
+        //        Application.Current.Shutdown();
+        //    }
+        //}
+
+        private async Task StopAllDevicesAsync(CancellationToken token)
+        {
+            var stopCameraTask = Task.Run(() => _cameraService?.StopCamera(), token);
+            var stopMicTask = Task.Run(() => _microphoneService?.Dispose(), token);
+
+            await Task.WhenAll(stopCameraTask, stopMicTask);
         }
 
         private void SetupEventHandlers()
@@ -188,19 +247,24 @@ namespace VideoChat_Client.Views
             {
                 CallButton.IsEnabled = false;
                 ErrorText.Visibility = Visibility.Collapsed;
+                CallButton.Content = "Завершить звонок";
 
                 // Начало звонка
+                StartMediaDevices();
+
+                // Создаем запись о звонке
                 var call = await _callsService.StartCall(
                     App.CurrentUser.Id,
                     _selectedUser.Id,
                     GetLocalIpAddress(),
                     12345);
 
-                callId = call.Id; // Сохраняем ID звонка
+                // Здесь будет логика сетевого соединения
+                // Пока просто имитируем звонк
+                await Task.Delay(2000); // Имитация звонка
 
-                // Здесь будет реальная логика звонка через UDP
-                // Имитируем звонок длительностью 2 секунды
-                await Task.Delay(2000);
+                // Завершение звонка
+                await EndCall(call.Id);
 
                 // Рассчитываем длительность
                 TimeSpan callDuration = DateTime.UtcNow - callStartTime;
@@ -235,7 +299,77 @@ namespace VideoChat_Client.Views
             finally
             {
                 CallButton.IsEnabled = true;
+                CallButton.Content = "Позвонить";
             }
+        }
+        private void StartMediaDevices()
+        {
+            try
+            {
+                // Запуск камеры
+                _cameraService.FrameReady += OnCameraFrameReady;
+                _cameraService.StartCamera();
+
+                // Запуск микрофона
+                _microphoneService.AudioDataAvailable += OnAudioDataAvailable;
+                _microphoneService.StartRecording();
+
+                // Показываем видео
+                LocalVideoDisplay.Visibility = Visibility.Visible;
+            }
+            catch (Exception ex)
+            {
+                ShowError($"Ошибка запуска устройств: {ex.Message}");
+            }
+        }
+
+        private async Task EndCall(Guid callId)
+        {
+            try
+            {
+                // Останавливаем устройства
+                StopMediaDevices();
+
+                // Обновляем статус звонка
+                await _callsService.UpdateCallStatus(
+                    callId,
+                    "completed",
+                    GetLocalIpAddress(),
+                    12346);
+
+                // Обновляем историю
+                await LoadCallHistory(_selectedUser.Id);
+            }
+            catch (Exception ex)
+            {
+                ShowError($"Ошибка завершения звонка: {ex.Message}");
+            }
+        }
+
+        private void StopMediaDevices()
+        {
+            try
+            {
+                // Останавливаем камеру
+                _cameraService.StopCamera();
+                _cameraService.FrameReady -= OnCameraFrameReady;
+                LocalVideoDisplay.Source = null;
+                LocalVideoDisplay.Visibility = Visibility.Collapsed;
+
+                // Останавливаем микрофон
+                _microphoneService.StopRecording();
+                _microphoneService.AudioDataAvailable -= OnAudioDataAvailable;
+            }
+            catch (Exception ex)
+            {
+                ShowError($"Ошибка остановки устройств: {ex.Message}");
+            }
+        }
+
+        private void OnAudioDataAvailable(byte[] audioData)
+        {
+            // Здесь будет отправка аудио по сети
+            Debug.WriteLine($"Получено аудиоданных: {audioData.Length} байт");
         }
 
         private string FormatDuration(TimeSpan duration)

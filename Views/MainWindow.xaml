@@ -105,6 +105,10 @@
                            Margin="0,10"
                            Visibility="Collapsed"/>
             </StackPanel>
+            <Image x:Name="LocalVideoDisplay" 
+           Width="160" Height="120"
+           HorizontalAlignment="Right" VerticalAlignment="Bottom"
+           Margin="10"/>
         </Grid>
     </Grid>
 </Window>
