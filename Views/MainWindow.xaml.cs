@@ -29,6 +29,7 @@ namespace VideoChat_Client.Views
 
         private CameraService _cameraService;
         private MicrophoneService _microphoneService;
+        private NetworkService _networkService;
 
         public MainWindow()
         {
@@ -50,6 +51,8 @@ namespace VideoChat_Client.Views
             _microphoneService = new MicrophoneService();
             _cameraService.FrameReady += OnCameraFrameReady;
             _microphoneService.AudioDataAvailable += OnAudioDataAvailable;
+
+            _networkService = new NetworkService(App.CurrentUser.Id, Environment.GetEnvironmentVariable("SERVER_IP"));
 
             //Loaded += MainWindow_Loaded;
             //Closing += MainWindow_Closing;
@@ -259,12 +262,15 @@ namespace VideoChat_Client.Views
                     GetLocalIpAddress(),
                     12345);
 
-                // Здесь будет логика сетевого соединения
-                // Пока просто имитируем звонк
-                await Task.Delay(2000); // Имитация звонка
+                //if (!_networkManager.IsConnected)
+                //{
+                //    await _networkManager.ConnectAsync();
+                //}
 
-                // Завершение звонка
-                await EndCall(call.Id);
+                //_networkManager.OnCallResponse += HandleCallResponse;
+                //_networkManager.OnIncomingCall += HandleIncomingCall;
+
+                await StartNewCall(_selectedUser.Id);
 
                 // Рассчитываем длительность
                 TimeSpan callDuration = DateTime.UtcNow - callStartTime;
@@ -302,6 +308,30 @@ namespace VideoChat_Client.Views
                 CallButton.Content = "Позвонить";
             }
         }
+
+        private async Task StartNewCall(Guid tartgetId)
+        {
+            // Начало звонка
+            StartMediaDevices();
+
+            //// Создаем запись о звонке
+            //var call = await _callsService.StartCall(
+            //    App.CurrentUser.Id,
+            //    _selectedUser.Id,
+            //    GetLocalIpAddress(),
+            //    _networkManager.UdpPort);
+
+            // Обновляем UI
+            CallButton.Content = "Завершить звонок";
+            //CallStatusText.Text = "Установка соединения...";
+            //CallStatusText.Visibility = Visibility.Visible;
+
+            // Инициируем звонок через сетевой менеджер
+            //bool callAccepted = await _networkManager.StartCallAsync(_selectedUser.Id);
+
+            _networkService.InitiateCallAsync(tartgetId);
+        }
+
         private void StartMediaDevices()
         {
             try
