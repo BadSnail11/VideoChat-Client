@@ -12,6 +12,7 @@ using AForge.Video.DirectShow;
 using System.Drawing;
 using System.Windows.Media.Imaging;
 using VideoChat_Client.Codecs;
+using System.IdentityModel.Tokens.Jwt;
 
 namespace VideoChat_Client.Services
 {
@@ -44,6 +45,9 @@ namespace VideoChat_Client.Services
         private readonly ConcurrentQueue<byte[]> _audioQueue = new();
         private CancellationTokenSource _streamingCts;
 
+        public event Action<BitmapImage> VideoFrameReceived;
+        public event Action<byte[]> AudioDataReceived;
+        private enum PacketType : byte { Video = 0x01, Audio = 0x02, Control = 0x03 }
 
         public NetworkService(Guid userId, string serverIp, int serverPort = 5000, int udpPort = 12345)
         {
@@ -183,41 +187,6 @@ namespace VideoChat_Client.Services
                 }
             }
         }
-        //private async Task ListenToServerAsync()
-        //{
-        //    try
-        //    {
-        //        var buffer = new byte[1024];
-        //        var stream = _tcpClient.GetStream();
-
-        //        while (IsConnected)
-        //        {
-        //            // Асинхронно читаем команду
-        //            var bytesRead = await stream.ReadAsync(buffer, 0, 1);
-        //            if (bytesRead == 0) break; // Соединение закрыто
-
-        //            var command = buffer[0];
-
-        //            if (command == 0x01) // INCOMING_CALL
-        //            {
-        //                // Читаем остальные данные синхронно (так проще для бинарных данных)
-        //                var callerIdBytes = _tcpReader.ReadBytes(16);
-        //                var ipBytes = _tcpReader.ReadBytes(4);
-        //                var port = _tcpReader.ReadInt32();
-
-        //                var callerId = new Guid(callerIdBytes);
-        //                var endPoint = new IPEndPoint(new IPAddress(ipBytes), port);
-
-        //                OnIncomingCall?.Invoke(callerId, endPoint);
-        //            }
-        //        }
-        //    }
-        //    catch (Exception ex)
-        //    {
-        //        Console.WriteLine($"Ошибка прослушки сервера: {ex.Message}");
-        //        Dispose();
-        //    }
-        //}
 
         private void InitializeUdpClient()
         {
@@ -329,6 +298,158 @@ namespace VideoChat_Client.Services
 
             Console.WriteLine($"Не удалось отправить данные после {maxRetries} попыток. Последняя ошибка: {lastError?.Message}");
             return false;
+        }
+
+        public void StartStreaming()
+        {
+            _streamingCts = new CancellationTokenSource();
+
+            _ = Task.Run(() => SendVideoPackets(_remoteEndPoint, _streamingCts.Token));
+            _ = Task.Run(() => SendAudioPackets(_remoteEndPoint, _streamingCts.Token));
+        }
+
+        public void StopStreaming()
+        {
+            _streamingCts?.Cancel();
+        }
+
+        public void EnqueueVideoFrame(Bitmap frame)
+        {
+            try
+            {
+                var compressed = _videoCodec.Compress(frame);
+                _videoQueue.Enqueue(compressed);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Video compression error: {ex.Message}");
+            }
+        }
+
+        public void EnqueueAudioSamples(byte[] pcmData)
+        {
+            try
+            {
+                var compressed = _audioCodec.Compress(pcmData);
+                _audioQueue.Enqueue(compressed);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Audio compression error: {ex.Message}");
+            }
+        }
+
+        private async Task SendVideoPackets(IPEndPoint endoint, CancellationToken ct)
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                if (_videoQueue.TryDequeue(out var videoData))
+                {
+                    await SendMediaPacket(endoint, PacketType.Video, videoData, ct);
+                }
+            }
+            await Task.Delay(10, ct);
+        }
+
+        private async Task SendAudioPackets(IPEndPoint endpoint, CancellationToken ct)
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                if (_audioQueue.TryDequeue(out var audioData))
+                {
+                    await SendMediaPacket(endpoint, PacketType.Audio, audioData, ct);
+                }
+            }
+            await Task.Delay(20, ct);
+        }
+
+        private async Task SendMediaPacket(IPEndPoint endpoint, PacketType type, byte[] data, CancellationToken ct)
+        {
+            try
+            {
+                using (var ms = new MemoryStream())
+                using (var writer = new BinaryWriter(ms))
+                {
+                    writer.Write((byte)type);
+                    writer.Write(data.Length);
+                    writer.Write(data);
+
+                    await _udpClient.SendAsync(ms.ToArray(), (int)ms.Length, endpoint);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Send error ({type}): {ex.Message}");
+            }
+        }
+
+        public async Task StartReceiving(CancellationToken ct)
+        {
+            try
+            {
+                while (!ct.IsCancellationRequested)
+                {
+                    var result = await _udpClient.ReceiveAsync(ct);
+                    ProcessIncomingPacket(result.Buffer);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Start receiving error: {ex.Message}");
+            }
+        }
+
+        private void ProcessIncomingPacket(byte[] data)
+        {
+            try
+            {
+                using (var ms = new MemoryStream(data))
+                using (var reader = new BinaryReader(ms))
+                {
+                    var type = (PacketType)reader.ReadByte();
+                    var length = reader.ReadInt32();
+                    var payload = reader.ReadBytes(length);
+
+                    switch (type)
+                    {
+                        case PacketType.Video:
+                            var frame = _videoCodec.Decompress(payload);
+                            VideoFrameReceived?.Invoke(ConvertBitmapToBitmapImage(frame));
+                            break;
+                        case PacketType.Audio:
+                            var pcmData = _audioCodec.Decompress(payload);
+                            AudioDataReceived?.Invoke(pcmData);
+                            break;
+                        case PacketType.Control:
+                            break;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Packet processing error: {ex.Message}");
+            }
+        }
+
+        private BitmapImage ConvertBitmapToBitmapImage(Bitmap bitmap)
+        {
+            // Создаем зеркальное отражение
+            bitmap.RotateFlip(RotateFlipType.RotateNoneFlipX);
+
+            using (var memory = new System.IO.MemoryStream())
+            {
+                bitmap.Save(memory, System.Drawing.Imaging.ImageFormat.Bmp);
+                memory.Position = 0;
+
+                var bitmapImage = new BitmapImage();
+                bitmapImage.BeginInit();
+                bitmapImage.StreamSource = memory;
+                bitmapImage.CacheOption = BitmapCacheOption.OnLoad;
+                bitmapImage.EndInit();
+                bitmapImage.Freeze();
+
+                return bitmapImage;
+            }
         }
 
         public void Dispose()

@@ -7,6 +7,7 @@ using AForge.Video;
 using AForge.Video.DirectShow;
 using System.Drawing;
 using System.Windows.Media.Imaging;
+using System.Net;
 
 namespace VideoChat_Client.Services
 {
@@ -14,6 +15,8 @@ namespace VideoChat_Client.Services
     {
         private VideoCaptureDevice _videoSource;
         private bool _isRunning;
+        private NetworkService _networkService;
+        private IPEndPoint _remoteEndpoint;
 
         public event Action<BitmapImage> FrameReady;
 
@@ -29,6 +32,12 @@ namespace VideoChat_Client.Services
             _isRunning = true;
         }
 
+        public void SetNetworkTarget(NetworkService networkService, IPEndPoint remoteEndpoint)
+        {
+            _networkService = networkService;
+            _remoteEndpoint = remoteEndpoint;
+        }
+
         private void OnNewFrame(object sender, NewFrameEventArgs eventArgs)
         {
             if (!_isRunning) return;
@@ -37,6 +46,11 @@ namespace VideoChat_Client.Services
             {
                 var bitmapImage = ConvertBitmapToBitmapImage(bitmap);
                 FrameReady?.Invoke(bitmapImage);
+
+                if (_networkService != null)
+                {
+                    _networkService.EnqueueVideoFrame(bitmap);
+                }
             }
         }
 

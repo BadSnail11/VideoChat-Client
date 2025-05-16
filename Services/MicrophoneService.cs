@@ -5,6 +5,7 @@ using System.Text;
 using System.Threading.Tasks;
 using NAudio.Wave;
 using System;
+using NAudio.CoreAudioApi;
 
 namespace VideoChat_Client.Services
 {
@@ -12,45 +13,33 @@ namespace VideoChat_Client.Services
     {
         private WaveInEvent _waveIn;
         private bool _isRecording;
+        private WasapiCapture _audioCapture;
+        private NetworkService _networkService;
+        private bool _isRunning;
 
         public event Action<byte[]> AudioDataAvailable;
 
-        public void StartRecording()
+        public void StartCapture(NetworkService networkService)
         {
-            _waveIn = new WaveInEvent
-            {
-                DeviceNumber = 0, // Дефолтное устройство
-                WaveFormat = new WaveFormat(44100, 16, 1) // 44.1kHz, 16-bit, mono
-            };
-
-            _waveIn.DataAvailable += OnDataAvailable;
-            _waveIn.StartRecording();
-            _isRecording = true;
+            _networkService = networkService;
+            _audioCapture = new WasapiCapture();
+            _audioCapture.DataAvailable += OnAudioData;
+            _audioCapture.StartRecording();
+            _isRunning = true;
         }
 
-        private void OnDataAvailable(object sender, WaveInEventArgs e)
+        private void OnAudioData(object sender, WaveInEventArgs e)
         {
-            if (!_isRecording) return;
+            if (!_isRunning) return;
 
-            var buffer = new byte[e.BytesRecorded];
-            Buffer.BlockCopy(e.Buffer, 0, buffer, 0, e.BytesRecorded);
-            AudioDataAvailable?.Invoke(buffer);
-        }
-
-        public void StopRecording()
-        {
-            if (_waveIn != null)
-            {
-                _isRecording = false;
-                _waveIn.StopRecording();
-                _waveIn.DataAvailable -= OnDataAvailable;
-            }
+            // Отправляем сырые PCM данные (можно добавить кодирование)
+            _networkService?.EnqueueAudioSamples(e.Buffer);
         }
 
         public void Dispose()
         {
-            StopRecording();
-            _waveIn?.Dispose();
+            _isRunning = false;
+            _audioCapture?.Dispose();
         }
     }
 }
