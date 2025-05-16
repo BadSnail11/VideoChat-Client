@@ -37,6 +37,12 @@ namespace VideoChat_Client.Services
         public bool IsConnected => _tcpClient?.Connected == true;
         public event Action<Guid, IPEndPoint> OnIncomingCall;
         public event Action<bool> OnCallResponse;
+        public event Action<Guid> OnIncomingCallRequest;
+        public event Action<Guid> OnCallAccepted;
+        public event Action<Guid, string> OnCallRejected;
+        public event Action<Guid> OnCallEnded;
+        public event Action<Guid> OnHeartbeatReceived;
+
 
         // Добавляем буферы и кодеки
         private readonly VideoCodec _videoCodec = new VideoCodec();
@@ -48,6 +54,23 @@ namespace VideoChat_Client.Services
         public event Action<BitmapImage> VideoFrameReceived;
         public event Action<byte[]> AudioDataReceived;
         private enum PacketType : byte { Video = 0x01, Audio = 0x02, Control = 0x03 }
+
+        public enum ControlPacketType : byte
+        {
+            CallRequest = 0x10,     // Запрос звонка
+            CallAccepted = 0x11,    // Звонок принят
+            CallRejected = 0x12,    // Звонок отклонен
+            CallEnded = 0x13,       // Завершение звонка
+            Heartbeat = 0x14        // Проверка соединения
+        }
+
+        public class CallControlPacket
+        {
+            public ControlPacketType Type { get; set; }
+            public Guid CallId { get; set; }
+            public DateTime Timestamp { get; set; }
+            public string AdditionalInfo { get; set; } // Например, причина отклонения
+        }
 
         public NetworkService(Guid userId, string serverIp, int serverPort = 5000, int udpPort = 12345)
         {
@@ -363,6 +386,56 @@ namespace VideoChat_Client.Services
             await Task.Delay(20, ct);
         }
 
+        public async Task SendControlPacket(IPEndPoint endpoint, ControlPacketType type,
+        Guid callId, CancellationToken ct, string additionalInfo = null)
+        {
+            try
+            {
+                var packet = new CallControlPacket
+                {
+                    Type = type,
+                    CallId = callId,
+                    Timestamp = DateTime.UtcNow,
+                    AdditionalInfo = additionalInfo
+                };
+
+                var data = SerializeControlPacket(packet);
+                await SendMediaPacket(endpoint, PacketType.Control, data, ct);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Control packet send error: {ex.Message}");
+            }
+        }
+
+        private byte[] SerializeControlPacket(CallControlPacket packet)
+        {
+            using (var ms = new MemoryStream())
+            using (var writer = new BinaryWriter(ms))
+            {
+                writer.Write((byte)packet.Type);
+                writer.Write(packet.CallId.ToByteArray());
+                writer.Write(packet.Timestamp.ToBinary());
+                writer.Write(packet.AdditionalInfo ?? string.Empty);
+                return ms.ToArray();
+            }
+        }
+
+        private CallControlPacket DeserializeControlPacket(byte[] data)
+        {
+            using (var ms = new MemoryStream(data))
+            using (var reader = new BinaryReader(ms))
+            {
+                return new CallControlPacket
+                {
+                    Type = (ControlPacketType)reader.ReadByte(),
+                    CallId = new Guid(reader.ReadBytes(16)),
+                    Timestamp = DateTime.FromBinary(reader.ReadInt64()),
+                    AdditionalInfo = reader.ReadString()
+                };
+            }
+        }
+
         private async Task SendMediaPacket(IPEndPoint endpoint, PacketType type, byte[] data, CancellationToken ct)
         {
             try
@@ -421,6 +494,8 @@ namespace VideoChat_Client.Services
                             AudioDataReceived?.Invoke(pcmData);
                             break;
                         case PacketType.Control:
+                            var controlPacket = DeserializeControlPacket(payload);
+                            HandleControlPacket(controlPacket);
                             break;
                     }
                 }
@@ -449,6 +524,31 @@ namespace VideoChat_Client.Services
                 bitmapImage.Freeze();
 
                 return bitmapImage;
+            }
+        }
+        private void HandleControlPacket(CallControlPacket packet)
+        {
+            switch (packet.Type)
+            {
+                case ControlPacketType.CallRequest:
+                    OnIncomingCallRequest?.Invoke(packet.CallId);
+                    break;
+
+                case ControlPacketType.CallAccepted:
+                    OnCallAccepted?.Invoke(packet.CallId);
+                    break;
+
+                case ControlPacketType.CallRejected:
+                    OnCallRejected?.Invoke(packet.CallId, packet.AdditionalInfo);
+                    break;
+
+                case ControlPacketType.CallEnded:
+                    OnCallEnded?.Invoke(packet.CallId);
+                    break;
+
+                case ControlPacketType.Heartbeat:
+                    // Обработка heartbeat
+                    break;
             }
         }
 

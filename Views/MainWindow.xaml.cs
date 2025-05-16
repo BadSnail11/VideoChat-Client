@@ -323,11 +323,6 @@ namespace VideoChat_Client.Views
 
             // Обновляем UI
             CallButton.Content = "Завершить звонок";
-            //CallStatusText.Text = "Установка соединения...";
-            //CallStatusText.Visibility = Visibility.Visible;
-
-            // Инициируем звонок через сетевой менеджер
-            //bool callAccepted = await _networkManager.StartCallAsync(_selectedUser.Id);
 
             _networkService.InitiateCallAsync(tartgetId);
         }
