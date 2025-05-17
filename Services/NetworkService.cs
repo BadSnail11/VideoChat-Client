@@ -390,7 +390,7 @@ namespace VideoChat_Client.Services
             await Task.Delay(20, ct);
         }
 
-        public async Task SendControlPacket(IPEndPoint endpoint, ControlPacketType type,
+        private async Task SendControlPacket(IPEndPoint endpoint, ControlPacketType type,
         Guid callId, CancellationToken ct, string additionalInfo = null)
         {
             try
@@ -412,7 +412,22 @@ namespace VideoChat_Client.Services
             }
         }
 
-        public async Task StartSendingRequest()
+        public async Task AcceptCall(Guid callId)
+        {
+            await SendControlPacket(_remoteEndPoint, ControlPacketType.CallAccepted, callId, _streamingCts.Token);
+        }
+
+        public async Task RejectCall(Guid callId)
+        {
+            await SendControlPacket(_remoteEndPoint, ControlPacketType.CallRejected, callId, _streamingCts.Token);
+        }
+
+        public async Task EndCall(Guid callId)
+        {
+            await SendControlPacket(_remoteEndPoint, ControlPacketType.CallEnded, callId, _streamingCts.Token);
+        }
+
+        public async Task RequestCall(Guid callId)
         {
             bool flag = true;
             void stop(Guid guid) => flag = false;
@@ -420,7 +435,7 @@ namespace VideoChat_Client.Services
             OnCallRejected += stop;
             while (flag)
             {
-                await SendControlPacket(_remoteEndPoint, ControlPacketType.CallRequest, Guid.Empty, _streamingCts.Token);
+                await SendControlPacket(_remoteEndPoint, ControlPacketType.CallRequest, callId, _streamingCts.Token);
                 Thread.Sleep(10);
             }
             OnCallAccepted -= stop;

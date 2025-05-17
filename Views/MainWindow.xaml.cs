@@ -31,6 +31,10 @@ namespace VideoChat_Client.Views
         private MicrophoneService _microphoneService;
         private NetworkService _networkService;
 
+        private Guid _currentCallId;
+        private enum CallState { None, Outgoing, Incoming, Active }
+        private CallState _currentCallState = CallState.None;
+
         public MainWindow()
         {
             InitializeComponent();
@@ -55,60 +59,17 @@ namespace VideoChat_Client.Views
             _networkService = new NetworkService(App.CurrentUser.Id, Environment.GetEnvironmentVariable("SERVER_IP"));
             _ = Task.Run(() => _networkService.ConnectAsync());
 
+            _networkService.OnIncomingCallRequest += OnIncomingCall;
+            _networkService.OnCallAccepted += OnCallAccepted;
+            _networkService.OnCallRejected += OnCallRejected;
+            _networkService.OnCallEnded += OnCallEnded;
+
             //Loaded += MainWindow_Loaded;
             //Closing += MainWindow_Closing;
 
             LoadContacts();
             SetupEventHandlers();
         }
-
-        //private void MainWindow_Loaded(object sender, RoutedEventArgs e)
-        //{
-        //    try
-        //    {
-        //        _cameraService.StartCamera();
-        //        _microphoneService.StartRecording();
-        //    }
-        //    catch (Exception ex)
-        //    {
-        //        MessageBox.Show($"Ошибка инициализации устройств: {ex.Message}");
-        //    }
-        //}
-
-        private void OnCameraFrameReady(BitmapImage image)
-        {
-            Dispatcher.Invoke(() =>
-            {
-                LocalVideoDisplay.Source = image;
-            });
-        }
-
-        //private async void MainWindow_Closing(object sender, CancelEventArgs e)
-        //{
-        //    e.Cancel = true;
-
-        //    var cts = new CancellationTokenSource(2000); // Таймаут 2 секунды
-
-        //    try
-        //    {
-        //        await StopAllDevicesAsync(cts.Token);
-        //        Application.Current.Shutdown();
-        //    }
-        //    catch (OperationCanceledException)
-        //    {
-        //        // Принудительное закрытие по таймауту
-        //        Application.Current.Shutdown();
-        //    }
-        //}
-
-        private async Task StopAllDevicesAsync(CancellationToken token)
-        {
-            var stopCameraTask = Task.Run(() => _cameraService?.StopCamera(), token);
-            var stopMicTask = Task.Run(() => _microphoneService?.Dispose(), token);
-
-            await Task.WhenAll(stopCameraTask, stopMicTask);
-        }
-
         private void SetupEventHandlers()
         {
             // Обработка нажатия Enter в поле поиска
@@ -120,6 +81,10 @@ namespace VideoChat_Client.Views
                 }
             };
         }
+
+        //
+        // Работа с контактами
+        //
 
         private async void LoadContacts()
         {
@@ -179,7 +144,7 @@ namespace VideoChat_Client.Views
                 ShowError($"Ошибка поиска: {ex.Message}");
             }
         }
-
+        
         private async void ContactsListView_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (ContactsListView.SelectedItem is User selectedContact)
@@ -236,6 +201,136 @@ namespace VideoChat_Client.Views
             ErrorText.Visibility = Visibility.Visible;
         }
 
+        private async void AddContactButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_selectedUser == null || App.CurrentUser == null) return;
+
+            try
+            {
+                AddContactButton.IsEnabled = false;
+                AddContactButton.Content = "Добавление...";
+
+                bool success = await _contactsService.AddContact(
+                    App.CurrentUser.Id,
+                    _selectedUser.Id);
+
+                if (success)
+                {
+                    //ShowError("Контакт успешно добавлен", isError: false);
+
+                    // Обновляем список контактов
+                    LoadContacts();
+
+                    // Скрываем кнопку, если контакт уже добавлен
+                    AddContactButton.Visibility = ShouldHideAddButton(_selectedUser.Id) ? Visibility.Visible : Visibility.Hidden;
+                }
+                else
+                {
+                    ShowError("Контакт уже существует");
+                }
+            }
+            catch (Exception ex)
+            {
+                ShowError($"Ошибка: {ex.Message}");
+            }
+            finally
+            {
+                AddContactButton.IsEnabled = true;
+                AddContactButton.Content = "Добавить в контакты";
+            }
+        }
+
+        private bool ShouldHideAddButton(Guid contactId)
+        {
+            return _contacts.Any(c => c.Id == contactId);
+        }
+
+        //
+        // Работа со звонком
+        //
+
+        private void OnCameraFrameReady(BitmapImage image)
+        {
+            Dispatcher.Invoke(() =>
+            {
+                //LocalVideoDisplay.Source = image;
+                LocalVideoPreview.Source = image;
+            });
+        }
+
+        private void ShowCallUI(CallState state, string statusText = "")
+        {
+            Dispatcher.Invoke(() =>
+            {
+                // Скрываем все не относящееся к звонку
+                DefaultMessageText.Visibility = Visibility.Collapsed;
+                UserPanel.Visibility = Visibility.Collapsed;
+
+                // Показываем интерфейс звонка
+                CallGrid.Visibility = Visibility.Visible;
+                CallStatusText.Text = statusText;
+
+                // Настраиваем элементы в зависимости от состояния
+                switch (state)
+                {
+                    case CallState.Outgoing:
+                        IncomingCallButtons.Visibility = Visibility.Collapsed;
+                        EndCallButton.Visibility = Visibility.Visible;
+                        CallStatusText.Text = "Вызов...";
+                        break;
+
+                    case CallState.Incoming:
+                        IncomingCallButtons.Visibility = Visibility.Visible;
+                        EndCallButton.Visibility = Visibility.Collapsed;
+                        CallStatusText.Text = "Входящий вызов";
+                        break;
+
+                    case CallState.Active:
+                        IncomingCallButtons.Visibility = Visibility.Collapsed;
+                        EndCallButton.Visibility = Visibility.Visible;
+                        CallStatusText.Text = "Звонок активен";
+                        break;
+
+                    case CallState.None:
+                        CallGrid.Visibility = Visibility.Collapsed;
+                        DefaultMessageText.Visibility =
+                            ContactsListView.SelectedItem == null ? Visibility.Visible : Visibility.Collapsed;
+                        UserPanel.Visibility =
+                            ContactsListView.SelectedItem != null ? Visibility.Visible : Visibility.Collapsed;
+                        break;
+                }
+
+                _currentCallState = state;
+            });
+        }
+
+        private String GetCallerName(Guid callId)
+        {
+            return "usr";
+        }
+
+        private void OnIncomingCall(Guid callId)
+        {
+            ShowCallUI(CallState.Incoming, $"Входящий вызов от {GetCallerName(callId)}");
+        }
+        private void OnCallAccepted(Guid callId)
+        {
+            ShowCallUI(CallState.Active);
+            StartMediaDevices();
+        }
+
+        private void OnCallRejected(Guid callId)
+        {
+            ShowCallUI(CallState.None);
+            MessageBox.Show($"Вызов отклонен");
+        }
+
+        private void OnCallEnded(Guid callId)
+        {
+            ShowCallUI(CallState.None);
+            StopMediaDevices();
+        }
+
         private async void CallButton_Click(object sender, RoutedEventArgs e)
         {
             if (_selectedUser == null || App.CurrentUser == null)
@@ -257,11 +352,11 @@ namespace VideoChat_Client.Views
                 //StartMediaDevices();
 
                 // Создаем запись о звонке
-                var call = await _callsService.StartCall(
-                    App.CurrentUser.Id,
-                    _selectedUser.Id,
-                    GetLocalIpAddress(),
-                    12345);
+                //var call = await _callsService.StartCall(
+                //    App.CurrentUser.Id,
+                //    _selectedUser.Id,
+                //    GetLocalIpAddress(),
+                //    12345);
 
                 //if (!_networkManager.IsConnected)
                 //{
@@ -277,11 +372,11 @@ namespace VideoChat_Client.Views
                 TimeSpan callDuration = DateTime.UtcNow - callStartTime;
 
                 // Обновляем статус и длительность звонка
-                await _callsService.UpdateCallStatus(
-                    callId,
-                    "completed",
-                    GetLocalIpAddress(),
-                    12346);
+                //await _callsService.UpdateCallStatus(
+                //    callId,
+                //    "completed",
+                //    GetLocalIpAddress(),
+                //    12346);
 
                 await _callsService.UpdateCallDuration(callId, callDuration);
 
@@ -330,10 +425,29 @@ namespace VideoChat_Client.Views
 
             _networkService.InitiateCallAsync(tartgetId);
 
-            await _networkService.StartSendingRequest();
+            await _networkService.RequestCall(_currentCallId);
 
             //_cameraService.SetNetworkTarget(_networkService);
             //_microphoneService.SetNetworkTarget(_networkService);
+        }
+
+        private async void AcceptCallButton_Click(object sender, RoutedEventArgs e)
+        {
+            await _networkService.AcceptCall(_currentCallId);
+            ShowCallUI(CallState.Active);
+        }
+
+        private async void RejectCallButton_Click(object sender, RoutedEventArgs e)
+        {
+            await _networkService.RejectCall(_currentCallId);
+            ShowCallUI(CallState.None);
+        }
+
+        private async void EndCallButton_Click(object sender, RoutedEventArgs e)
+        {
+            await _networkService.EndCall(_currentCallId);
+            await EndCall(_currentCallId);
+            ShowCallUI(CallState.None);
         }
 
         private void StartMediaDevices()
@@ -349,54 +463,11 @@ namespace VideoChat_Client.Views
                 _microphoneService.StartCapture();
 
                 // Показываем видео
-                LocalVideoDisplay.Visibility = Visibility.Visible;
+                LocalVideoPreview.Visibility = Visibility.Visible;
             }
             catch (Exception ex)
             {
                 ShowError($"Ошибка запуска устройств: {ex.Message}");
-            }
-        }
-
-        private async Task EndCall(Guid callId)
-        {
-            try
-            {
-                // Останавливаем устройства
-                StopMediaDevices();
-
-                // Обновляем статус звонка
-                await _callsService.UpdateCallStatus(
-                    callId,
-                    "completed",
-                    GetLocalIpAddress(),
-                    12346);
-
-                // Обновляем историю
-                await LoadCallHistory(_selectedUser.Id);
-            }
-            catch (Exception ex)
-            {
-                ShowError($"Ошибка завершения звонка: {ex.Message}");
-            }
-        }
-
-        private void StopMediaDevices()
-        {
-            try
-            {
-                // Останавливаем камеру
-                _cameraService.StopCamera();
-                _cameraService.FrameReady -= OnCameraFrameReady;
-                LocalVideoDisplay.Source = null;
-                LocalVideoDisplay.Visibility = Visibility.Collapsed;
-
-                // Останавливаем микрофон
-                _microphoneService.StopRecording();
-                _microphoneService.AudioDataAvailable -= OnAudioDataAvailable;
-            }
-            catch (Exception ex)
-            {
-                ShowError($"Ошибка остановки устройств: {ex.Message}");
             }
         }
 
@@ -414,60 +485,61 @@ namespace VideoChat_Client.Views
             return duration.ToString(@"mm\:ss");
         }
 
-        private string GetLocalIpAddress()
+        private async Task EndCall(Guid callId)
         {
-            // Заглушка - в реальном приложении нужно получить реальный IP
-            return "127.0.0.1";
+            try
+            {
+                // Останавливаем устройства
+                StopMediaDevices();
+
+                // Обновляем статус звонка
+                //await _callsService.UpdateCallStatus(
+                //    callId,
+                //    "completed",
+                //    GetLocalIpAddress(),
+                //    12346);
+
+                // Обновляем историю
+                await LoadCallHistory(_selectedUser.Id);
+            }
+            catch (Exception ex)
+            {
+                ShowError($"Ошибка завершения звонка: {ex.Message}");
+            }
+        }
+
+        private void StopMediaDevices()
+        {
+            try
+            {
+                // Останавливаем камеру
+                _cameraService.StopCamera();
+                _cameraService.FrameReady -= OnCameraFrameReady;
+                LocalVideoPreview.Source = null;
+                LocalVideoPreview.Visibility = Visibility.Collapsed;
+
+                // Останавливаем микрофон
+                _microphoneService.Dispose();
+                _microphoneService.AudioDataAvailable -= OnAudioDataAvailable;
+            }
+            catch (Exception ex)
+            {
+                ShowError($"Ошибка остановки устройств: {ex.Message}");
+            }
+        }
+
+        private async Task StopAllDevicesAsync(CancellationToken token)
+        {
+            var stopCameraTask = Task.Run(() => _cameraService?.StopCamera(), token);
+            var stopMicTask = Task.Run(() => _microphoneService?.Dispose(), token);
+
+            await Task.WhenAll(stopCameraTask, stopMicTask);
         }
 
         private void ShowError(string message)
         {
             ErrorText.Text = message;
             ErrorText.Visibility = Visibility.Visible;
-        }
-
-        private async void AddContactButton_Click(object sender, RoutedEventArgs e)
-        {
-            if (_selectedUser == null || App.CurrentUser == null) return;
-
-            try
-            {
-                AddContactButton.IsEnabled = false;
-                AddContactButton.Content = "Добавление...";
-
-                bool success = await _contactsService.AddContact(
-                    App.CurrentUser.Id,
-                    _selectedUser.Id);
-
-                if (success)
-                {
-                    //ShowError("Контакт успешно добавлен", isError: false);
-
-                    // Обновляем список контактов
-                    LoadContacts();
-
-                    // Скрываем кнопку, если контакт уже добавлен
-                    AddContactButton.Visibility = ShouldHideAddButton(_selectedUser.Id) ? Visibility.Visible : Visibility.Hidden;
-                }
-                else
-                {
-                    ShowError("Контакт уже существует");
-                }
-            }
-            catch (Exception ex)
-            {
-                ShowError($"Ошибка: {ex.Message}");
-            }
-            finally
-            {
-                AddContactButton.IsEnabled = true;
-                AddContactButton.Content = "Добавить в контакты";
-            }
-        }
-
-        private bool ShouldHideAddButton(Guid contactId)
-        {
-            return _contacts.Any(c => c.Id == contactId);
         }
 
         protected override async void OnClosed(EventArgs e)

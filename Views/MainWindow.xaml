@@ -105,10 +105,56 @@
                            Margin="0,10"
                            Visibility="Collapsed"/>
             </StackPanel>
-            <Image x:Name="LocalVideoDisplay" 
-           Width="160" Height="120"
-           HorizontalAlignment="Right" VerticalAlignment="Bottom"
-           Margin="10"/>
+        </Grid>
+        <!-- Новые элементы для состояния звонка -->
+        <Grid x:Name="CallGrid" Visibility="Collapsed">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- Видео собеседника -->
+            <Image x:Name="RemoteVideoDisplay" 
+                       Stretch="Uniform"
+                       Grid.Row="0"/>
+
+            <!-- Наше видео (превью) -->
+            <Border BorderBrush="White" BorderThickness="2" 
+                        HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                        Margin="10" CornerRadius="5">
+                <Image x:Name="LocalVideoPreview" 
+                           Width="160" Height="120"
+                           Stretch="Uniform"/>
+            </Border>
+
+            <!-- Панель управления звонком -->
+            <StackPanel Grid.Row="1" Orientation="Horizontal" 
+                            HorizontalAlignment="Center" Margin="0,10">
+                <!-- Кнопки для входящего звонка -->
+                <StackPanel x:Name="IncomingCallButtons" Orientation="Horizontal" Visibility="Collapsed">
+                    <Button x:Name="AcceptCallButton" Content="Принять" 
+                                Background="Green" Foreground="White"
+                                Padding="20,5" Margin="0,0,10,0"
+                                Click="AcceptCallButton_Click"/>
+                    <Button x:Name="RejectCallButton" Content="Отклонить" 
+                                Background="Red" Foreground="White"
+                                Padding="20,5"
+                                Click="RejectCallButton_Click"/>
+                </StackPanel>
+
+                <!-- Кнопка для активного звонка -->
+                <Button x:Name="EndCallButton" Content="Завершить звонок" 
+                             Background="Red" Foreground="White"
+                             Padding="20,5" Visibility="Collapsed"
+                             Click="EndCallButton_Click"/>
+            </StackPanel>
+
+            <!-- Информация о звонке -->
+            <TextBlock x:Name="CallStatusText" 
+                           VerticalAlignment="Top" HorizontalAlignment="Center"
+                           Margin="0,20" FontSize="16" FontWeight="Bold"
+                           Foreground="White" TextWrapping="Wrap"
+                           Panel.ZIndex="1"/>
         </Grid>
     </Grid>
 </Window>
