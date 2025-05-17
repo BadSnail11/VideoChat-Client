@@ -16,7 +16,7 @@ namespace VideoChat_Client.Services
         private VideoCaptureDevice _videoSource;
         private bool _isRunning;
         private NetworkService _networkService;
-        private IPEndPoint _remoteEndpoint;
+        //private IPEndPoint _remoteEndpoint;
 
         public event Action<BitmapImage> FrameReady;
 
@@ -32,10 +32,10 @@ namespace VideoChat_Client.Services
             _isRunning = true;
         }
 
-        public void SetNetworkTarget(NetworkService networkService, IPEndPoint remoteEndpoint)
+        public void SetNetworkTarget(NetworkService networkService)
         {
             _networkService = networkService;
-            _remoteEndpoint = remoteEndpoint;
+            //_remoteEndpoint = remoteEndpoint;
         }
 
         private void OnNewFrame(object sender, NewFrameEventArgs eventArgs)

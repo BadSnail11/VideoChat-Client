@@ -53,6 +53,7 @@ namespace VideoChat_Client.Views
             _microphoneService.AudioDataAvailable += OnAudioDataAvailable;
 
             _networkService = new NetworkService(App.CurrentUser.Id, Environment.GetEnvironmentVariable("SERVER_IP"));
+            _ = Task.Run(() => _networkService.ConnectAsync());
 
             //Loaded += MainWindow_Loaded;
             //Closing += MainWindow_Closing;
@@ -253,7 +254,7 @@ namespace VideoChat_Client.Views
                 CallButton.Content = "Завершить звонок";
 
                 // Начало звонка
-                StartMediaDevices();
+                //StartMediaDevices();
 
                 // Создаем запись о звонке
                 var call = await _callsService.StartCall(
@@ -314,6 +315,7 @@ namespace VideoChat_Client.Views
             // Начало звонка
             StartMediaDevices();
 
+
             //// Создаем запись о звонке
             //var call = await _callsService.StartCall(
             //    App.CurrentUser.Id,
@@ -324,7 +326,14 @@ namespace VideoChat_Client.Views
             // Обновляем UI
             CallButton.Content = "Завершить звонок";
 
+            await _networkService.UpdateClientAsync();
+
             _networkService.InitiateCallAsync(tartgetId);
+
+            await _networkService.StartSendingRequest();
+
+            //_cameraService.SetNetworkTarget(_networkService);
+            //_microphoneService.SetNetworkTarget(_networkService);
         }
 
         private void StartMediaDevices()
@@ -337,7 +346,7 @@ namespace VideoChat_Client.Views
 
                 // Запуск микрофона
                 _microphoneService.AudioDataAvailable += OnAudioDataAvailable;
-                _microphoneService.StartRecording();
+                _microphoneService.StartCapture();
 
                 // Показываем видео
                 LocalVideoDisplay.Visibility = Visibility.Visible;

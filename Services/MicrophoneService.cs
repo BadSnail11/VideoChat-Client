@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using NAudio.Wave;
 using System;
 using NAudio.CoreAudioApi;
+using System.Net;
 
 namespace VideoChat_Client.Services
 {
@@ -19,9 +20,15 @@ namespace VideoChat_Client.Services
 
         public event Action<byte[]> AudioDataAvailable;
 
-        public void StartCapture(NetworkService networkService)
+        public void SetNetworkTarget(NetworkService networkService)
         {
             _networkService = networkService;
+            //_remoteEndpoint = remoteEndpoint;
+        }
+
+        public void StartCapture()
+        {
+            //_networkService = networkService;
             _audioCapture = new WasapiCapture();
             _audioCapture.DataAvailable += OnAudioData;
             _audioCapture.StartRecording();
@@ -33,7 +40,10 @@ namespace VideoChat_Client.Services
             if (!_isRunning) return;
 
             // Отправляем сырые PCM данные (можно добавить кодирование)
-            _networkService?.EnqueueAudioSamples(e.Buffer);
+            if (_networkService != null)
+            {
+                _networkService?.EnqueueAudioSamples(e.Buffer);
+            }
         }
 
         public void Dispose()

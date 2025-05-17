@@ -39,7 +39,7 @@ namespace VideoChat_Client.Services
         public event Action<bool> OnCallResponse;
         public event Action<Guid> OnIncomingCallRequest;
         public event Action<Guid> OnCallAccepted;
-        public event Action<Guid, string> OnCallRejected;
+        public event Action<Guid> OnCallRejected;
         public event Action<Guid> OnCallEnded;
         public event Action<Guid> OnHeartbeatReceived;
 
@@ -107,7 +107,7 @@ namespace VideoChat_Client.Services
             }
         }
 
-        private async Task UpdateClientAsync()
+        public async Task UpdateClientAsync()
         {
             var publicIp = GetPublicIP();
             var localIp = GetLocalIP();
@@ -189,7 +189,10 @@ namespace VideoChat_Client.Services
 
             _remoteEndPoint = new IPEndPoint(new IPAddress(ipBytes), port);
             //return new IPEndPoint(new IPAddress(ipBytes), port);
-            await ListenForUdpData(_remoteEndPoint);
+
+            InitializeUdpClient();
+
+            _ = Task.Run(() => ListenForUdpData(_remoteEndPoint));
         }
 
         public async void HandleIncomingCalls()
@@ -259,6 +262,7 @@ namespace VideoChat_Client.Services
             // Здесь будет обработка полученных медиаданных
             // Например:
             // OnVideoFrameReceived?.Invoke(data);
+            _ = Task.Run(() => StartReceiving(_streamingCts.Token));
             Console.WriteLine($"Получено {data.Length} байт данных");
         }
 
@@ -408,6 +412,21 @@ namespace VideoChat_Client.Services
             }
         }
 
+        public async Task StartSendingRequest()
+        {
+            bool flag = true;
+            void stop(Guid guid) => flag = false;
+            OnCallAccepted += stop;
+            OnCallRejected += stop;
+            while (flag)
+            {
+                await SendControlPacket(_remoteEndPoint, ControlPacketType.CallRequest, Guid.Empty, _streamingCts.Token);
+                Thread.Sleep(10);
+            }
+            OnCallAccepted -= stop;
+            OnCallRejected -= stop;
+        }
+
         private byte[] SerializeControlPacket(CallControlPacket packet)
         {
             using (var ms = new MemoryStream())
@@ -539,7 +558,7 @@ namespace VideoChat_Client.Services
                     break;
 
                 case ControlPacketType.CallRejected:
-                    OnCallRejected?.Invoke(packet.CallId, packet.AdditionalInfo);
+                    OnCallRejected?.Invoke(packet.CallId);
                     break;
 
                 case ControlPacketType.CallEnded:
