@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "VideoChat-Client": {
+      "commandName": "Project",
+      "commandLineArgs": "--port=12346"
+    }
+  }
+}

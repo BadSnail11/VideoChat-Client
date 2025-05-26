@@ -56,7 +56,12 @@ namespace VideoChat_Client.Views
             _cameraService.FrameReady += OnCameraFrameReady;
             _microphoneService.AudioDataAvailable += OnAudioDataAvailable;
 
-            _networkService = new NetworkService(App.CurrentUser.Id, Environment.GetEnvironmentVariable("SERVER_IP"));
+            int port;
+            if (App.Port != 0)
+                port = App.Port;
+            else
+                port = 12345;
+            _networkService = new NetworkService(App.CurrentUser.Id, Environment.GetEnvironmentVariable("SERVER_IP"), int.Parse(Environment.GetEnvironmentVariable("SERVER_PORT")), port);
             _ = Task.Run(() => _networkService.ConnectAsync());
 
             _networkService.OnIncomingCallRequest += OnIncomingCall;
@@ -408,7 +413,7 @@ namespace VideoChat_Client.Views
         private async Task StartNewCall(Guid tartgetId)
         {
             // Начало звонка
-            StartMediaDevices();
+            //StartMediaDevices();
 
 
             //// Создаем запись о звонке
@@ -425,7 +430,8 @@ namespace VideoChat_Client.Views
 
             _networkService.InitiateCallAsync(tartgetId);
 
-            await _networkService.RequestCall(_currentCallId);
+            //await _networkService.RequestCall(_currentCallId);
+            _ = Task.Run(() => _networkService.RequestCall(_currentCallId));
 
             //_cameraService.SetNetworkTarget(_networkService);
             //_microphoneService.SetNetworkTarget(_networkService);
@@ -435,6 +441,7 @@ namespace VideoChat_Client.Views
         {
             await _networkService.AcceptCall(_currentCallId);
             ShowCallUI(CallState.Active);
+            StartMediaDevices();
         }
 
         private async void RejectCallButton_Click(object sender, RoutedEventArgs e)

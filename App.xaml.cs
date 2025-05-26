@@ -14,6 +14,54 @@ namespace VideoChat_Client;
 public partial class App : Application
 {
     public static Models.User? CurrentUser { get; set; }
+
+    public static string Ip = "";
+    public static int Port = 0;
+
+    private Dictionary<string, string> ParseArguments(string[] args)
+    {
+        var argsDict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (string arg in args)
+        {
+            if (arg.StartsWith("--") && arg.Contains("="))
+            {
+                string[] parts = arg.Split('=');
+                if (parts.Length == 2)
+                {
+                    string key = parts[0].TrimStart('-');
+                    string value = parts[1];
+                    argsDict[key] = value;
+                }
+            }
+        }
+
+        return argsDict;
+    }
+
+    protected override void OnStartup(StartupEventArgs e)
+    {
+        base.OnStartup(e);
+
+        Dictionary<string, string> argsDict = ParseArguments(e.Args);
+
+        if (argsDict.TryGetValue("ip", out string ip))
+        {
+            Ip = ip;
+        }
+        else
+        {
+            Ip = "";
+        }
+        if (argsDict.TryGetValue("port", out string port))
+        {
+            Port = int.Parse(port);
+        }
+        else
+        {
+            Port = 0;
+        }
+    }
     protected override void OnExit(ExitEventArgs e)
     {
         if (CurrentUser != null)
