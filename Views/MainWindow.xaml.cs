@@ -174,15 +174,15 @@ namespace VideoChat_Client.Views
         {
             try
             {
-                if (App.CurrentUser == null) return;
+                //if (App.CurrentUser == null) return;
 
-                var history = await _callsService.GetCallHistory(
-                    App.CurrentUser.Id,
-                    contactId);
+                //var history = await _callsService.GetCallHistory(
+                //    App.CurrentUser.Id,
+                //    contactId);
 
-                CallHistoryListView.ItemsSource = history
-                    .OrderByDescending(c => c.StartedAt)
-                    .ToList();
+                //CallHistoryListView.ItemsSource = history
+                //    .OrderByDescending(c => c.StartedAt)
+                //    .ToList();
             }
             catch (Exception ex)
             {

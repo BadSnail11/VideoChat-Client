@@ -28,7 +28,6 @@ namespace VideoChat_Client.Views
             Env.TraversePath().Load();
             string SupabaseUrl = Environment.GetEnvironmentVariable("SUPABASE_URL")!;
             string SupabaseKey = Environment.GetEnvironmentVariable("SUPABASE_KEY")!;
-            // Инициализация Supabase клиента
             var supabase = new Client(
                 SupabaseUrl,
                 SupabaseKey);
@@ -51,10 +50,8 @@ namespace VideoChat_Client.Views
 
             if (user != null)
             {
-                // Сохраняем текущего пользователя
                 App.CurrentUser = user;
 
-                // Открываем главное окно
                 var mainWindow = new MainWindow();
                 mainWindow.Show();
                 this.Close();
@@ -87,8 +84,6 @@ namespace VideoChat_Client.Views
             if (success)
             {
 
-                //ShowError("Регистрация успешна! Теперь войдите.", isError: false);
-                // Сохраняем текущего пользователя
                 LoginButton_Click(sender, e);
             }
             else
