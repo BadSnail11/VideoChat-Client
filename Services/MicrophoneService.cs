@@ -42,7 +42,7 @@ namespace VideoChat_Client.Services
             // Отправляем сырые PCM данные (можно добавить кодирование)
             if (_networkService != null)
             {
-                _networkService?.EnqueueAudioSamples(e.Buffer);
+                _networkService.EnqueueAudioSamples(e.Buffer);
             }
         }
 

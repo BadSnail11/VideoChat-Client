@@ -2,7 +2,7 @@
   "profiles": {
     "VideoChat-Client": {
       "commandName": "Project",
-      "commandLineArgs": "--port=12346"
+      "commandLineArgs": "--ip=127.0.0.2 --port=12345"
     }
   }
 }

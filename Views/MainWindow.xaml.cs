@@ -30,6 +30,7 @@ namespace VideoChat_Client.Views
         private CameraService _cameraService;
         private MicrophoneService _microphoneService;
         private NetworkService _networkService;
+        private AudioService _audioService;
 
         private Guid _currentCallId;
         private enum CallState { None, Outgoing, Incoming, Active }
@@ -53,6 +54,7 @@ namespace VideoChat_Client.Views
 
             _cameraService = new CameraService();
             _microphoneService = new MicrophoneService();
+            _audioService = new AudioService();
             _cameraService.FrameReady += OnCameraFrameReady;
             _microphoneService.AudioDataAvailable += OnAudioDataAvailable;
 
@@ -68,6 +70,9 @@ namespace VideoChat_Client.Views
             _networkService.OnCallAccepted += OnCallAccepted;
             _networkService.OnCallRejected += OnCallRejected;
             _networkService.OnCallEnded += OnCallEnded;
+
+            _networkService.VideoFrameReceived += OnRecievedVideo;
+            _networkService.AudioDataReceived += OnRecievedAudio;
 
             //Loaded += MainWindow_Loaded;
             //Closing += MainWindow_Closing;
@@ -254,6 +259,22 @@ namespace VideoChat_Client.Views
         // Работа со звонком
         //
 
+        private void OnRecievedVideo(BitmapImage image)
+        {
+            Dispatcher.Invoke(() =>
+            {
+                RemoteVideoDisplay.Source = image;
+            });
+        }
+
+        private void OnRecievedAudio(byte[] data)
+        {
+            Dispatcher.Invoke(() =>
+            {
+                _audioService.EnqueueAudioData(data);
+            });
+        }
+
         private void OnCameraFrameReady(BitmapImage image)
         {
             Dispatcher.Invoke(() =>
@@ -322,6 +343,9 @@ namespace VideoChat_Client.Views
         {
             ShowCallUI(CallState.Active);
             StartMediaDevices();
+            _cameraService.SetNetworkTarget(_networkService);
+            _microphoneService.SetNetworkTarget(_networkService);
+            _networkService.StartStreaming();
         }
 
         private void OnCallRejected(Guid callId)
@@ -334,6 +358,7 @@ namespace VideoChat_Client.Views
         {
             ShowCallUI(CallState.None);
             StopMediaDevices();
+            _networkService.StopStreaming();
         }
 
         private async void CallButton_Click(object sender, RoutedEventArgs e)
@@ -388,8 +413,8 @@ namespace VideoChat_Client.Views
                 // Обновление истории
                 await LoadCallHistory(_selectedUser.Id);
 
-                MessageBox.Show($"Звонок завершен. Длительность: {FormatDuration(callDuration)}",
-                    "Успех", MessageBoxButton.OK, MessageBoxImage.Information);
+                //MessageBox.Show($"Звонок завершен. Длительность: {FormatDuration(callDuration)}",
+                //    "Успех", MessageBoxButton.OK, MessageBoxImage.Information);
             }
             catch (Exception ex)
             {
@@ -442,12 +467,16 @@ namespace VideoChat_Client.Views
             await _networkService.AcceptCall(_currentCallId);
             ShowCallUI(CallState.Active);
             StartMediaDevices();
+            _cameraService.SetNetworkTarget(_networkService);
+            _microphoneService.SetNetworkTarget(_networkService);
+            _networkService.StartStreaming();
         }
 
         private async void RejectCallButton_Click(object sender, RoutedEventArgs e)
         {
             await _networkService.RejectCall(_currentCallId);
             ShowCallUI(CallState.None);
+            StopMediaDevices();
         }
 
         private async void EndCallButton_Click(object sender, RoutedEventArgs e)
@@ -455,20 +484,24 @@ namespace VideoChat_Client.Views
             await _networkService.EndCall(_currentCallId);
             await EndCall(_currentCallId);
             ShowCallUI(CallState.None);
+            StopMediaDevices();
+            //_networkService.StopStreaming();
         }
 
         private void StartMediaDevices()
         {
+            //try { 
+            //    _audioService.StartPlayback();
+            //}
+            //catch (Exception ex)
+            //{
+            //    ShowError($"Ошибка запуска устройств: {ex.Message}");
+            //}
             try
             {
                 // Запуск камеры
                 _cameraService.FrameReady += OnCameraFrameReady;
                 _cameraService.StartCamera();
-
-                // Запуск микрофона
-                _microphoneService.AudioDataAvailable += OnAudioDataAvailable;
-                _microphoneService.StartCapture();
-
                 // Показываем видео
                 LocalVideoPreview.Visibility = Visibility.Visible;
             }
@@ -476,6 +509,18 @@ namespace VideoChat_Client.Views
             {
                 ShowError($"Ошибка запуска устройств: {ex.Message}");
             }
+
+            try
+            {
+                // Запуск микрофона
+                _microphoneService.AudioDataAvailable += OnAudioDataAvailable;
+                _microphoneService.StartCapture();
+            }
+            catch (Exception ex)
+            {
+                ShowError($"Ошибка запуска устройств: {ex.Message}");
+            }
+            
         }
 
         private void OnAudioDataAvailable(byte[] audioData)
@@ -528,6 +573,8 @@ namespace VideoChat_Client.Views
                 // Останавливаем микрофон
                 _microphoneService.Dispose();
                 _microphoneService.AudioDataAvailable -= OnAudioDataAvailable;
+
+                //_audioService.StopPlayback();
             }
             catch (Exception ex)
             {
