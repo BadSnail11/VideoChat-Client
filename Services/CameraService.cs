@@ -16,7 +16,6 @@ namespace VideoChat_Client.Services
         private VideoCaptureDevice _videoSource;
         private bool _isRunning;
         private NetworkService _networkService;
-        //private IPEndPoint _remoteEndpoint;
 
         public event Action<BitmapImage> FrameReady;
 
@@ -35,7 +34,6 @@ namespace VideoChat_Client.Services
         public void SetNetworkTarget(NetworkService networkService)
         {
             _networkService = networkService;
-            //_remoteEndpoint = remoteEndpoint;
         }
 
         private void OnNewFrame(object sender, NewFrameEventArgs eventArgs)
@@ -56,7 +54,6 @@ namespace VideoChat_Client.Services
 
         private BitmapImage ConvertBitmapToBitmapImage(Bitmap bitmap)
         {
-            // Создаем зеркальное отражение
             bitmap.RotateFlip(RotateFlipType.RotateNoneFlipX);
 
             using (var memory = new System.IO.MemoryStream())
@@ -81,11 +78,9 @@ namespace VideoChat_Client.Services
 
             _isRunning = false;
 
-            // Создаем копию ссылки для безопасной остановки
             var videoSource = _videoSource;
             _videoSource = null;
 
-            // Останавливаем в фоновом потоке
             Task.Run(() =>
             {
                 try
@@ -94,7 +89,6 @@ namespace VideoChat_Client.Services
                     {
                         videoSource.SignalToStop();
 
-                        // Ждем остановки, но не более 1 секунды
                         for (int i = 0; i < 10 && videoSource.IsRunning; i++)
                         {
                             Thread.Sleep(100);
@@ -106,7 +100,7 @@ namespace VideoChat_Client.Services
                         }
                     }
                 }
-                catch { /* Игнорируем ошибки при остановке */ }
+                catch {}
             });
         }
 

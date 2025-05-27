@@ -11,7 +11,7 @@ namespace VideoChat_Client.Models
     [Table("users")]
     public class User : BaseModel
     {
-        [PrimaryKey("id", false)] // false означает, что это не автоинкремент
+        [PrimaryKey("id", false)]
         public Guid Id { get; set; }
 
         [Column("username")]

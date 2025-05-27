@@ -21,7 +21,6 @@ namespace VideoChat_Client.Services
 
         public async Task<bool> Register(string username, string password)
         {
-            // Проверяем, существует ли пользователь
             var existingUser = await _supabase
                 .From<Models.User>()
                 .Where(x => x.Username == username)
@@ -30,10 +29,8 @@ namespace VideoChat_Client.Services
             if (existingUser != null)
                 return false;
 
-            // Генерируем соль и хеш пароля
             var passwordHash = HashPassword(password);
 
-            // Создаем нового пользователя
             var newUser = new Models.User
             {
                 Username = username,
@@ -48,7 +45,6 @@ namespace VideoChat_Client.Services
         }
         public async Task<Models.User?> Login(string username, string password)
         {
-            // Находим пользователя
             var user = await _supabase
                 .From<Models.User>()
                 .Where(x => x.Username == username)
@@ -57,7 +53,6 @@ namespace VideoChat_Client.Services
             if (user == null)
                 return null;
 
-            // Проверяем пароль
             var inputHash = HashPassword(password);
             if (inputHash != user.PasswordHash)
                 return null;
@@ -68,7 +63,6 @@ namespace VideoChat_Client.Services
                 .Set(x => x.IsActive, true)
                 .Update();
 
-            // Получаем обновленные данные пользователя
             var updatedUser = await _supabase
                 .From<Models.User>()
                 .Where(x => x.Id == user.Id)

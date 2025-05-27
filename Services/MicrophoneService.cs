@@ -23,12 +23,10 @@ namespace VideoChat_Client.Services
         public void SetNetworkTarget(NetworkService networkService)
         {
             _networkService = networkService;
-            //_remoteEndpoint = remoteEndpoint;
         }
 
         public void StartCapture()
         {
-            //_networkService = networkService;
             _audioCapture = new WasapiCapture();
             _audioCapture.DataAvailable += OnAudioData;
             _audioCapture.StartRecording();
@@ -39,7 +37,6 @@ namespace VideoChat_Client.Services
         {
             if (!_isRunning) return;
 
-            // Отправляем сырые PCM данные (можно добавить кодирование)
             if (_networkService != null)
             {
                 _networkService.EnqueueAudioSamples(e.Buffer);

@@ -118,7 +118,6 @@ namespace VideoChat_Client.Services
                     .Order(x => x.StartedAt, Postgrest.Constants.Ordering.Descending)
                     .Get();
 
-                // Вычисляем Duration локально
                 return response.Models.Select(c =>
                 {
                     var call = new Call
@@ -135,7 +134,6 @@ namespace VideoChat_Client.Services
                         ReceiverPort = c.ReceiverPort
                     };
 
-                    // Вычисляем длительность только если звонок завершен
                     if (call.EndedAt.HasValue && call.StartedAt != null)
                     {
                         call.Duration = FormatDuration(call.EndedAt.Value - call.StartedAt);

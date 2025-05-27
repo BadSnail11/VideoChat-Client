@@ -18,22 +18,18 @@ namespace VideoChat_Client.Services
 {
     public class NetworkService : IDisposable
     {
-        // TCP для сигнализации
         private TcpClient _tcpClient;
         private BinaryReader _tcpReader;
         private BinaryWriter _tcpWriter;
 
-        // UDP для медиаданных
         private UdpClient _udpClient;
         private IPEndPoint _remoteEndPoint;
 
-        // Настройки
         private readonly Guid _userId;
         private readonly string _serverIp;
         private readonly int _serverPort;
         private readonly int _udpPort;
 
-        // Состояние
         public bool IsConnected => _tcpClient?.Connected == true;
         public event Action<Guid, IPEndPoint> OnIncomingCall;
         public event Action<bool> OnCallResponse;
@@ -44,7 +40,6 @@ namespace VideoChat_Client.Services
         public event Action<Guid> OnHeartbeatReceived;
 
 
-        // Добавляем буферы и кодеки
         private readonly VideoCodec _videoCodec = new VideoCodec();
         private readonly AudioCodec _audioCodec = new AudioCodec();
         private readonly ConcurrentQueue<byte[]> _videoQueue = new();
@@ -53,15 +48,18 @@ namespace VideoChat_Client.Services
 
         public event Action<BitmapImage> VideoFrameReceived;
         public event Action<byte[]> AudioDataReceived;
+
+        private bool _sendingRequest = false;
+        private bool _sendingAnswer = false;
         private enum PacketType : byte { Video = 0x01, Audio = 0x02, Control = 0x03 }
 
         public enum ControlPacketType : byte
         {
-            CallRequest = 0x10,     // Запрос звонка
-            CallAccepted = 0x11,    // Звонок принят
-            CallRejected = 0x12,    // Звонок отклонен
-            CallEnded = 0x13,       // Завершение звонка
-            Heartbeat = 0x14        // Проверка соединения
+            CallRequest = 0x10,
+            CallAccepted = 0x11,
+            CallRejected = 0x12,
+            CallEnded = 0x13,
+            Heartbeat = 0x14
         }
 
         public class CallControlPacket
@@ -69,7 +67,7 @@ namespace VideoChat_Client.Services
             public ControlPacketType Type { get; set; }
             public Guid CallId { get; set; }
             public DateTime Timestamp { get; set; }
-            public string AdditionalInfo { get; set; } // Например, причина отклонения
+            public string AdditionalInfo { get; set; }
         }
 
         public NetworkService(Guid userId, string serverIp, int serverPort = 5000, int udpPort = 12345)
@@ -98,10 +96,8 @@ namespace VideoChat_Client.Services
                 _tcpReader = new BinaryReader(_tcpClient.GetStream());
                 _tcpWriter = new BinaryWriter(_tcpClient.GetStream());
 
-                // Регистрируем клиента
                 await UpdateClientAsync();
 
-                // Запускаем фоновую задачу для прослушки сервера
                 HandleIncomingCalls();
             }
             catch (Exception ex)
@@ -116,14 +112,11 @@ namespace VideoChat_Client.Services
             var publicIp = GetPublicIP();
             var localIp = GetLocalIP();
 
-                // Отправляем регистрационные данные
             _tcpWriter.Write(_userId.ToByteArray());
-            //_tcpWriter.Write(IPAddress.Parse(publicIp).GetAddressBytes());
             _tcpWriter.Write(publicIp);
-            _tcpWriter.Write((ushort)_udpPort); // Порт для входящих UDP соединений
-            //_tcpWriter.Write(IPAddress.Parse(localIp).GetAddressBytes());
+            _tcpWriter.Write((ushort)_udpPort);
             _tcpWriter.Write(localIp);
-            _tcpWriter.Write((ushort)_udpPort); // Локальный UDP порт
+            _tcpWriter.Write((ushort)_udpPort);
             _tcpWriter.Flush();
         }
 
@@ -186,21 +179,9 @@ namespace VideoChat_Client.Services
             if (!IsConnected)
                 throw new InvalidOperationException("Нет подключения к серверу");
 
-            // Отправляем запрос на звонок
-            _tcpWriter.Write((byte)0x01); // Команда CALL_REQUEST
+            _tcpWriter.Write((byte)0x01);
             _tcpWriter.Write(targetUserId.ToByteArray());
             _tcpWriter.Flush();
-
-            // Ждем ответа
-            //var ipString = _tcpReader.ReadString();
-            //var port = _tcpReader.ReadUInt16();
-
-            //_remoteEndPoint = new IPEndPoint(IPAddress.Parse(ipString), port);
-            //return new IPEndPoint(new IPAddress(ipBytes), port);
-
-            //InitializeUdpClient();
-
-            //_ = Task.Run(() => ListenForUdpData(_remoteEndPoint));
         }
 
         public async void HandleIncomingCalls()
@@ -208,13 +189,15 @@ namespace VideoChat_Client.Services
             while (IsConnected)
             {
                 var command = _tcpReader.ReadByte();
-                if (command == 0x01) // Входящий звонок
+                if (command == 0x01)
                 {
                     var callerId = new Guid(_tcpReader.ReadBytes(16));
                     var ipString = _tcpReader.ReadString();
                     var port = _tcpReader.ReadInt16();
-                    _remoteEndPoint = new IPEndPoint(IPAddress.Parse(ipString), port);
-
+                    var _newRemoteEndPoint = new IPEndPoint(IPAddress.Parse(ipString), port);
+                    if (_remoteEndPoint != null && _remoteEndPoint.Equals(_newRemoteEndPoint))
+                        continue;
+                    _remoteEndPoint = _newRemoteEndPoint;
                     InitializeUdpClient();
 
                     _ = Task.Run(() => ListenForUdpData(_remoteEndPoint));
@@ -226,7 +209,6 @@ namespace VideoChat_Client.Services
         {
             try
             {
-                // Пытаемся использовать указанный порт
                 _udpClient?.Dispose();
                 if (App.Ip != "")
                     _udpClient = new UdpClient(new IPEndPoint(IPAddress.Parse(App.Ip), _udpPort));
@@ -238,7 +220,6 @@ namespace VideoChat_Client.Services
             }
             catch (SocketException)
             {
-                // Если порт занят, используем случайный
                 if (App.Ip != "")
                     _udpClient = new UdpClient(new IPEndPoint(IPAddress.Parse(App.Ip), 0));
                 else
@@ -254,7 +235,6 @@ namespace VideoChat_Client.Services
                 {
                     var result = await _udpClient.ReceiveAsync();
 
-                    // Фильтруем только пакеты от ожидаемого отправителя
                     if (result.RemoteEndPoint.Address.Equals(remoteEndPoint.Address) &&
                         result.RemoteEndPoint.Port == remoteEndPoint.Port)
                     {
@@ -264,7 +244,6 @@ namespace VideoChat_Client.Services
             }
             catch (ObjectDisposedException)
             {
-                // Клиент был закрыт
             }
             catch (Exception ex)
             {
@@ -274,72 +253,8 @@ namespace VideoChat_Client.Services
 
         private void ProcessIncomingData(byte[] data)
         {
-            // Здесь будет обработка полученных медиаданных
-            // Например:
-            // OnVideoFrameReceived?.Invoke(data);
             _ = Task.Run(() => StartReceiving(_streamingCts.Token));
             Console.WriteLine($"Получено {data.Length} байт данных");
-        }
-
-        public async Task<bool> SendUdpDataAsync(
-        IPEndPoint remoteEndPoint,
-        byte[] data,
-        int maxRetries = 3,
-        int retryDelayMs = 100)
-        {
-            if (_udpClient == null || _udpClient.Client == null)
-            {
-                Console.WriteLine("UDP клиент не инициализирован");
-                return false;
-            }
-
-            int attempt = 0;
-            Exception lastError = null;
-
-            while (attempt <= maxRetries)
-            {
-                try
-                {
-                    // Для последней попытки используем меньший таймаут
-                    var timeout = attempt == maxRetries ? 2000 : 5000;
-                    using (var cts = new CancellationTokenSource(timeout))
-                    {
-                        var sendTask = _udpClient.SendAsync(data, data.Length, remoteEndPoint);
-                        var completedTask = await Task.WhenAny(
-                            sendTask,
-                            Task.Delay(-1, cts.Token)
-                        );
-
-                        if (completedTask == sendTask)
-                        {
-                            // Успешная отправка
-                            if (attempt > 0)
-                                Console.WriteLine($"Успешная отправка после {attempt} попыток");
-
-                            return true;
-                        }
-                    }
-                }
-                catch (SocketException ex) when (ex.SocketErrorCode == SocketError.TimedOut)
-                {
-                    lastError = ex;
-                    Console.WriteLine($"Таймаут отправки (попытка {attempt})");
-                }
-                catch (Exception ex)
-                {
-                    lastError = ex;
-                    Console.WriteLine($"Ошибка отправки: {ex.Message}");
-                }
-
-                attempt++;
-                if (attempt <= maxRetries)
-                {
-                    await Task.Delay(retryDelayMs);
-                }
-            }
-
-            Console.WriteLine($"Не удалось отправить данные после {maxRetries} попыток. Последняя ошибка: {lastError?.Message}");
-            return false;
         }
 
         public void StartStreaming()
@@ -427,37 +342,31 @@ namespace VideoChat_Client.Services
 
         public async Task AcceptCall(Guid callId)
         {
-            for (int i = 0; i < 5; i++)
+            _sendingAnswer = true;
+            //while (_sendingAnswer)
+            for (int i = 0; i < 15; i++)
                 await SendControlPacket(_remoteEndPoint, ControlPacketType.CallAccepted, callId, _streamingCts.Token);
         }
 
         public async Task RejectCall(Guid callId)
         {
-            for (int i = 0; i < 5; i++)
+            _sendingAnswer = true;
+            //while (_sendingAnswer)
+            for (int i = 0; i < 15; i++)
                 await SendControlPacket(_remoteEndPoint, ControlPacketType.CallRejected, callId, _streamingCts.Token);
         }
 
         public async Task EndCall(Guid callId)
         {
+            _streamingCts.Cancel();
             for (int i = 0; i < 5; i++)
                 await SendControlPacket(_remoteEndPoint, ControlPacketType.CallEnded, callId, _streamingCts.Token);
         }
 
         public async Task RequestCall(Guid callId)
         {
-            //bool flag = true;
-            //void stop(Guid guid) => flag = false;
-            //OnCallAccepted += stop;
-            //OnCallRejected += stop;
-            //while (flag)
-            //{
-            //    if (_streamingCts == null)
-            //        continue;
-            //    await SendControlPacket(_remoteEndPoint, ControlPacketType.CallRequest, callId, _streamingCts.Token);
-            //}
-            //OnCallAccepted -= stop;
-            //OnCallRejected -= stop;
-            for (int i = 0; i < 5; i++)
+            _sendingRequest = true;
+            while (_sendingRequest)
                 await SendControlPacket(_remoteEndPoint, ControlPacketType.CallRequest, callId, _streamingCts.Token);
         }
 
@@ -539,10 +448,12 @@ namespace VideoChat_Client.Services
                     switch (type)
                     {
                         case PacketType.Video:
+                            _sendingAnswer = false;
                             var frame = _videoCodec.Decompress(payload);
                             VideoFrameReceived?.Invoke(ConvertBitmapToBitmapImage(frame));
                             break;
                         case PacketType.Audio:
+                            _sendingAnswer = false;
                             var pcmData = _audioCodec.Decompress(payload);
                             AudioDataReceived?.Invoke(pcmData);
                             break;
@@ -561,7 +472,6 @@ namespace VideoChat_Client.Services
 
         private BitmapImage ConvertBitmapToBitmapImage(Bitmap bitmap)
         {
-            // Создаем зеркальное отражение
             bitmap.RotateFlip(RotateFlipType.RotateNoneFlipX);
 
             using (var memory = new System.IO.MemoryStream())
@@ -588,10 +498,12 @@ namespace VideoChat_Client.Services
                     break;
 
                 case ControlPacketType.CallAccepted:
+                    _sendingRequest = false;
                     OnCallAccepted?.Invoke(packet.CallId);
                     break;
 
                 case ControlPacketType.CallRejected:
+                    _sendingRequest = false;
                     OnCallRejected?.Invoke(packet.CallId);
                     break;
 
@@ -600,7 +512,6 @@ namespace VideoChat_Client.Services
                     break;
 
                 case ControlPacketType.Heartbeat:
-                    // Обработка heartbeat
                     break;
             }
         }

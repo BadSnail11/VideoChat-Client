@@ -15,7 +15,7 @@ namespace VideoChat_Client.Codecs
         private readonly ImageCodecInfo _jpegEncoder;
         private readonly EncoderParameters _encoderParams;
 
-        public int Quality { get; set; } = 50; // Качество от 0 до 100
+        public int Quality { get; set; } = 50;
 
         public VideoCodec()
         {

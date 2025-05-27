@@ -71,17 +71,15 @@ public partial class App : Application
                 Env.TraversePath().Load();
                 string SupabaseUrl = Environment.GetEnvironmentVariable("SUPABASE_URL")!;
                 string SupabaseKey = Environment.GetEnvironmentVariable("SUPABASE_KEY")!;
-                // Инициализация Supabase клиента
                 var supabase = new Client(
                     SupabaseUrl,
                     SupabaseKey);
                 var authService = new AuthService(supabase);
-                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2)); // Таймаут 5 секунд
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
                 authService.Logout(CurrentUser.Id).WaitAsync(cts.Token);
             }
             catch (Exception ex)
             {
-                // Логируем ошибку, но не прерываем выход
                 Console.WriteLine($"Error during logout: {ex.Message}");
             }
         }

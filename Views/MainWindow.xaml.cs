@@ -24,7 +24,6 @@ namespace VideoChat_Client.Views
         private readonly CallsService _callsService;
         private User _selectedUser;
         private Client _supabaseClient;
-        //private User _selectedContact;
         private ObservableCollection<User> _contacts = new ObservableCollection<User>();
 
         private CameraService _cameraService;
@@ -43,7 +42,6 @@ namespace VideoChat_Client.Views
             Env.TraversePath().Load();
             string SupabaseUrl = Environment.GetEnvironmentVariable("SUPABASE_URL")!;
             string SupabaseKey = Environment.GetEnvironmentVariable("SUPABASE_KEY")!;
-            // Инициализация Supabase клиента
             var supabase = new Client(
                 SupabaseUrl,
                 SupabaseKey);
@@ -74,15 +72,12 @@ namespace VideoChat_Client.Views
             _networkService.VideoFrameReceived += OnRecievedVideo;
             _networkService.AudioDataReceived += OnRecievedAudio;
 
-            //Loaded += MainWindow_Loaded;
-            //Closing += MainWindow_Closing;
 
             LoadContacts();
             SetupEventHandlers();
         }
         private void SetupEventHandlers()
         {
-            // Обработка нажатия Enter в поле поиска
             SearchTextBox.KeyDown += (sender, e) =>
             {
                 if (e.Key == System.Windows.Input.Key.Enter)
@@ -104,7 +99,6 @@ namespace VideoChat_Client.Views
             {
                 var contacts = await _contactsService.GetUserContactsWithDetails(App.CurrentUser.Id);
 
-                // Обновляем коллекцию в UI потоке
                 Dispatcher.Invoke(() =>
                 {
                     _contacts.Clear();
@@ -133,7 +127,6 @@ namespace VideoChat_Client.Views
 
             try
             {
-                // Поиск пользователей
                 var foundUsers = await _contactsService.SearchUsers(searchTerm);
                 var user = foundUsers.FirstOrDefault();
 
@@ -142,11 +135,8 @@ namespace VideoChat_Client.Views
                     ShowUserNotFound();
                     return;
                 }
-
-                // Отображение найденного пользователя
                 DisplayUserProfile(user);
 
-                // Загрузка истории звонков
                 await LoadCallHistory(user.Id);
             }
             catch (Exception ex)
@@ -169,15 +159,12 @@ namespace VideoChat_Client.Views
             _selectedUser = user;
             FoundUsernameText.Text = user.Username;
 
-            // Проверяем, есть ли пользователь в контактах
             AddContactButton.Visibility = ShouldHideAddButton(user.Id)
                 ? Visibility.Collapsed
                 : Visibility.Visible;
 
-            // Загружаем историю звонков
             await LoadCallHistory(user.Id);
 
-            // Показываем панель пользователя
             UserPanel.Visibility = Visibility.Visible;
             DefaultMessageText.Visibility = Visibility.Collapsed;
             ErrorText.Visibility = Visibility.Collapsed;
@@ -226,12 +213,9 @@ namespace VideoChat_Client.Views
 
                 if (success)
                 {
-                    //ShowError("Контакт успешно добавлен", isError: false);
 
-                    // Обновляем список контактов
                     LoadContacts();
 
-                    // Скрываем кнопку, если контакт уже добавлен
                     AddContactButton.Visibility = ShouldHideAddButton(_selectedUser.Id) ? Visibility.Visible : Visibility.Hidden;
                 }
                 else
@@ -279,7 +263,6 @@ namespace VideoChat_Client.Views
         {
             Dispatcher.Invoke(() =>
             {
-                //LocalVideoDisplay.Source = image;
                 LocalVideoPreview.Source = image;
             });
         }
@@ -288,15 +271,12 @@ namespace VideoChat_Client.Views
         {
             Dispatcher.Invoke(() =>
             {
-                // Скрываем все не относящееся к звонку
                 DefaultMessageText.Visibility = Visibility.Collapsed;
                 UserPanel.Visibility = Visibility.Collapsed;
 
-                // Показываем интерфейс звонка
                 CallGrid.Visibility = Visibility.Visible;
                 CallStatusText.Text = statusText;
 
-                // Настраиваем элементы в зависимости от состояния
                 switch (state)
                 {
                     case CallState.Outgoing:
@@ -337,10 +317,14 @@ namespace VideoChat_Client.Views
 
         private void OnIncomingCall(Guid callId)
         {
+            if (_currentCallState.Equals(CallState.Incoming) || _currentCallState.Equals(CallState.Active))
+                return;
             ShowCallUI(CallState.Incoming, $"Входящий вызов от {GetCallerName(callId)}");
         }
         private void OnCallAccepted(Guid callId)
         {
+            if (_currentCallState == CallState.Active)
+                return;
             ShowCallUI(CallState.Active);
             StartMediaDevices();
             _cameraService.SetNetworkTarget(_networkService);
@@ -350,6 +334,8 @@ namespace VideoChat_Client.Views
 
         private void OnCallRejected(Guid callId)
         {
+            if (_currentCallState == CallState.Active)
+                return;
             ShowCallUI(CallState.None);
             MessageBox.Show($"Вызов отклонен");
         }
@@ -357,8 +343,8 @@ namespace VideoChat_Client.Views
         private void OnCallEnded(Guid callId)
         {
             ShowCallUI(CallState.None);
-            StopMediaDevices();
             _networkService.StopStreaming();
+            StopMediaDevices();
         }
 
         private async void CallButton_Click(object sender, RoutedEventArgs e)
@@ -378,23 +364,12 @@ namespace VideoChat_Client.Views
                 ErrorText.Visibility = Visibility.Collapsed;
                 CallButton.Content = "Завершить звонок";
 
-                // Начало звонка
-                //StartMediaDevices();
-
                 // Создаем запись о звонке
                 //var call = await _callsService.StartCall(
                 //    App.CurrentUser.Id,
                 //    _selectedUser.Id,
                 //    GetLocalIpAddress(),
                 //    12345);
-
-                //if (!_networkManager.IsConnected)
-                //{
-                //    await _networkManager.ConnectAsync();
-                //}
-
-                //_networkManager.OnCallResponse += HandleCallResponse;
-                //_networkManager.OnIncomingCall += HandleIncomingCall;
 
                 await StartNewCall(_selectedUser.Id);
 
@@ -410,17 +385,12 @@ namespace VideoChat_Client.Views
 
                 await _callsService.UpdateCallDuration(callId, callDuration);
 
-                // Обновление истории
                 await LoadCallHistory(_selectedUser.Id);
-
-                //MessageBox.Show($"Звонок завершен. Длительность: {FormatDuration(callDuration)}",
-                //    "Успех", MessageBoxButton.OK, MessageBoxImage.Information);
             }
             catch (Exception ex)
             {
                 if (callId != Guid.Empty)
                 {
-                    // Если звонок был создан, но произошла ошибка
                     TimeSpan callDuration = DateTime.UtcNow - callStartTime;
                     await _callsService.UpdateCallStatus(callId, "failed");
                     await _callsService.UpdateCallDuration(callId, callDuration);
@@ -437,8 +407,6 @@ namespace VideoChat_Client.Views
 
         private async Task StartNewCall(Guid tartgetId)
         {
-            // Начало звонка
-            //StartMediaDevices();
 
 
             //// Создаем запись о звонке
@@ -455,11 +423,7 @@ namespace VideoChat_Client.Views
 
             _networkService.InitiateCallAsync(tartgetId);
 
-            //await _networkService.RequestCall(_currentCallId);
             _ = Task.Run(() => _networkService.RequestCall(_currentCallId));
-
-            //_cameraService.SetNetworkTarget(_networkService);
-            //_microphoneService.SetNetworkTarget(_networkService);
         }
 
         private async void AcceptCallButton_Click(object sender, RoutedEventArgs e)
@@ -485,24 +449,14 @@ namespace VideoChat_Client.Views
             await EndCall(_currentCallId);
             ShowCallUI(CallState.None);
             StopMediaDevices();
-            //_networkService.StopStreaming();
         }
 
         private void StartMediaDevices()
         {
-            //try { 
-            //    _audioService.StartPlayback();
-            //}
-            //catch (Exception ex)
-            //{
-            //    ShowError($"Ошибка запуска устройств: {ex.Message}");
-            //}
             try
             {
-                // Запуск камеры
                 _cameraService.FrameReady += OnCameraFrameReady;
                 _cameraService.StartCamera();
-                // Показываем видео
                 LocalVideoPreview.Visibility = Visibility.Visible;
             }
             catch (Exception ex)
@@ -512,7 +466,6 @@ namespace VideoChat_Client.Views
 
             try
             {
-                // Запуск микрофона
                 _microphoneService.AudioDataAvailable += OnAudioDataAvailable;
                 _microphoneService.StartCapture();
             }
@@ -525,7 +478,6 @@ namespace VideoChat_Client.Views
 
         private void OnAudioDataAvailable(byte[] audioData)
         {
-            // Здесь будет отправка аудио по сети
             Debug.WriteLine($"Получено аудиоданных: {audioData.Length} байт");
         }
 
@@ -541,7 +493,6 @@ namespace VideoChat_Client.Views
         {
             try
             {
-                // Останавливаем устройства
                 StopMediaDevices();
 
                 // Обновляем статус звонка
@@ -551,7 +502,6 @@ namespace VideoChat_Client.Views
                 //    GetLocalIpAddress(),
                 //    12346);
 
-                // Обновляем историю
                 await LoadCallHistory(_selectedUser.Id);
             }
             catch (Exception ex)
@@ -564,13 +514,11 @@ namespace VideoChat_Client.Views
         {
             try
             {
-                // Останавливаем камеру
                 _cameraService.StopCamera();
                 _cameraService.FrameReady -= OnCameraFrameReady;
                 LocalVideoPreview.Source = null;
                 LocalVideoPreview.Visibility = Visibility.Collapsed;
 
-                // Останавливаем микрофон
                 _microphoneService.Dispose();
                 _microphoneService.AudioDataAvailable -= OnAudioDataAvailable;
 
@@ -580,14 +528,6 @@ namespace VideoChat_Client.Views
             {
                 ShowError($"Ошибка остановки устройств: {ex.Message}");
             }
-        }
-
-        private async Task StopAllDevicesAsync(CancellationToken token)
-        {
-            var stopCameraTask = Task.Run(() => _cameraService?.StopCamera(), token);
-            var stopMicTask = Task.Run(() => _microphoneService?.Dispose(), token);
-
-            await Task.WhenAll(stopCameraTask, stopMicTask);
         }
 
         private void ShowError(string message)
@@ -603,7 +543,6 @@ namespace VideoChat_Client.Views
                 Env.TraversePath().Load();
                 string SupabaseUrl = Environment.GetEnvironmentVariable("SUPABASE_URL")!;
                 string SupabaseKey = Environment.GetEnvironmentVariable("SUPABASE_KEY")!;
-                // Инициализация Supabase клиента
                 var supabase = new Client(
                     SupabaseUrl,
                     SupabaseKey);

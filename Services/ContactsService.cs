@@ -51,7 +51,6 @@ namespace VideoChat_Client.Services
         {
             try
             {
-                // 1. Получаем ID контактов пользователя
                 var contactsResponse = await _supabase
                     .From<Contact>()
                     .Where(c => c.UserId == userId)
@@ -64,7 +63,6 @@ namespace VideoChat_Client.Services
                     .Select(c => c.ContactId)
                     .ToList();
 
-                // 2. Получаем информацию о контактах
                 var usersResponse = await _supabase
                     .From<User>()
                     .Filter("id", Postgrest.Constants.Operator.In, contactIds)
@@ -83,7 +81,6 @@ namespace VideoChat_Client.Services
         {
             try
             {
-                // Проверяем существование контакта
                 var existingContact = await _supabase
                     .From<Contact>()
                     .Where(x => x.UserId == userId && x.ContactId == contactId)
@@ -91,7 +88,7 @@ namespace VideoChat_Client.Services
 
                 if (existingContact.Models?.Count > 0)
                 {
-                    return false; // Контакт уже существует
+                    return false;
                 }
 
                 var newContact = new Contact
