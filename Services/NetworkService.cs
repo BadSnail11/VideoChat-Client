@@ -343,16 +343,16 @@ namespace VideoChat_Client.Services
         public async Task AcceptCall(Guid callId)
         {
             _sendingAnswer = true;
-            //while (_sendingAnswer)
-            for (int i = 0; i < 15; i++)
+            while (_sendingAnswer)
+                //for (int i = 0; i < 15; i++)
                 await SendControlPacket(_remoteEndPoint, ControlPacketType.CallAccepted, callId, _streamingCts.Token);
         }
 
         public async Task RejectCall(Guid callId)
         {
             _sendingAnswer = true;
-            //while (_sendingAnswer)
-            for (int i = 0; i < 15; i++)
+            while (_sendingAnswer)
+                //for (int i = 0; i < 15; i++)
                 await SendControlPacket(_remoteEndPoint, ControlPacketType.CallRejected, callId, _streamingCts.Token);
         }
 
