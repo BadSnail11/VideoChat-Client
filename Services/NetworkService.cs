@@ -39,7 +39,14 @@ namespace VideoChat_Client.Services
         public event Action<Guid> OnCallEnded;
         public event Action<Guid> OnHeartbeatReceived;
 
-
+        public enum CallStatuses
+        {
+            requesting,
+            answering,
+            oncall,
+            waiting
+        }
+        public CallStatuses callStatus = CallStatuses.waiting;
         private readonly VideoCodec _videoCodec = new VideoCodec();
         private readonly AudioCodec _audioCodec = new AudioCodec();
         private readonly ConcurrentQueue<byte[]> _videoQueue = new();
@@ -182,6 +189,7 @@ namespace VideoChat_Client.Services
             _tcpWriter.Write((byte)0x01);
             _tcpWriter.Write(targetUserId.ToByteArray());
             _tcpWriter.Flush();
+            callStatus = CallStatuses.requesting;
         }
 
         public async void HandleIncomingCalls()
@@ -342,16 +350,16 @@ namespace VideoChat_Client.Services
 
         public async Task AcceptCall(Guid callId)
         {
-            _sendingAnswer = true;
-            while (_sendingAnswer)
+            //_sendingAnswer = true;
+            while (callStatus == CallStatuses.answering)
                 //for (int i = 0; i < 15; i++)
                 await SendControlPacket(_remoteEndPoint, ControlPacketType.CallAccepted, callId, _streamingCts.Token);
         }
 
         public async Task RejectCall(Guid callId)
         {
-            _sendingAnswer = true;
-            while (_sendingAnswer)
+            //_sendingAnswer = true;
+            while (callStatus == CallStatuses.answering)
                 //for (int i = 0; i < 15; i++)
                 await SendControlPacket(_remoteEndPoint, ControlPacketType.CallRejected, callId, _streamingCts.Token);
         }
@@ -365,8 +373,8 @@ namespace VideoChat_Client.Services
 
         public async Task RequestCall(Guid callId)
         {
-            _sendingRequest = true;
-            while (_sendingRequest)
+            //_sendingRequest = true;
+            while (callStatus == CallStatuses.requesting)
                 await SendControlPacket(_remoteEndPoint, ControlPacketType.CallRequest, callId, _streamingCts.Token);
         }
 
@@ -448,12 +456,14 @@ namespace VideoChat_Client.Services
                     switch (type)
                     {
                         case PacketType.Video:
-                            _sendingAnswer = false;
+                            //_sendingAnswer = false;
+                            callStatus = CallStatuses.oncall;
                             var frame = _videoCodec.Decompress(payload);
                             VideoFrameReceived?.Invoke(ConvertBitmapToBitmapImage(frame));
                             break;
                         case PacketType.Audio:
-                            _sendingAnswer = false;
+                            //_sendingAnswer = false;
+                            callStatus = CallStatuses.oncall;
                             var pcmData = _audioCodec.Decompress(payload);
                             AudioDataReceived?.Invoke(pcmData);
                             break;
@@ -494,20 +504,26 @@ namespace VideoChat_Client.Services
             switch (packet.Type)
             {
                 case ControlPacketType.CallRequest:
+                    if (callStatus != CallStatuses.waiting) break;
+                    callStatus = CallStatuses.answering;
                     OnIncomingCallRequest?.Invoke(packet.CallId);
                     break;
-
                 case ControlPacketType.CallAccepted:
-                    _sendingRequest = false;
+                    if (callStatus != CallStatuses.requesting) break;
+                    //_sendingRequest = false;
+                    callStatus = CallStatuses.oncall;
                     OnCallAccepted?.Invoke(packet.CallId);
                     break;
 
                 case ControlPacketType.CallRejected:
-                    _sendingRequest = false;
+                    if (callStatus != CallStatuses.requesting) break;
+                    //_sendingRequest = false;
+                    callStatus = CallStatuses.waiting;
                     OnCallRejected?.Invoke(packet.CallId);
                     break;
 
                 case ControlPacketType.CallEnded:
+                    callStatus = CallStatuses.waiting;
                     OnCallEnded?.Invoke(packet.CallId);
                     break;
 
